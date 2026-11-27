@@ -21,3 +21,7 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+*.pyc
+/data/__pycache__
+/engine/__pycache__
+*.pyc
