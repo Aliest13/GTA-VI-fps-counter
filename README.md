@@ -14,19 +14,14 @@ Glassmorphic `PySide6` desktop dashboard estimating real-time GTA VI **Average F
 - **Auto-Optimize for 60 FPS + Undo:** Intelligently reduces only the settings causing the active bottleneck (with one-click Undo).
 - **Live Multi-GPU Comparison Chart:** Compares Base FPS of all GPUs plus PS5 / PS5 Pro references with 30 FPS & 60 FPS marker lines.
 
-## Quick Start
+## Prerequisites
 
+- **Python 3.11+** (ensure `Add python.exe to PATH` is checked during Windows installation)
+
+## Quick Start (Windows PowerShell — Recommended)
+
+### 1. First-Time Setup (create `.venv` & install dependencies)
 ```powershell
-# Using the pre-created virtual environment:
-.venv\Scripts\python.exe main.py
-
-# Or standard installation:
-pip install -r requirements.txt
-python main.py
-```
-
-## Run Tests
-
-```powershell
-.venv\Scripts\python.exe -m pytest -v
-```
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
