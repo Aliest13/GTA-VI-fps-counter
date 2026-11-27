@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, Qt
+from pathlib import Path
+
+from PySide6.QtCore import QPointF, Qt, QTimer
 from PySide6.QtGui import (
     QColor,
     QLinearGradient,
@@ -12,11 +14,13 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -41,6 +45,7 @@ from data.hardware_db import (
     get_platform_compatibility_notes,
 )
 from data.settings_db import (
+    FRAME_GEN_BY_ID,
     FRAME_GEN_MODES,
     RESOLUTIONS,
     SETTING_CATEGORIES,
@@ -49,11 +54,13 @@ from data.settings_db import (
     SETTINGS_PRESETS,
     UPSCALERS,
     default_settings_map,
+    resolve_upscaler_for_vendor,
 )
 from engine.predictor import (
     SimulationInput,
     auto_optimize_for_60_fps,
     compare_all_gpus,
+    export_simulation_markdown,
     simulate,
 )
 from ui.styles import (
@@ -215,6 +222,13 @@ class MainWindow(QMainWindow):
         self._lang_btn.clicked.connect(self._toggle_language)
         row.addWidget(self._lang_btn)
 
+        self._export_btn = QPushButton("Export .md")
+        self._export_btn.setObjectName("GhostBtn")
+        self._export_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._export_btn.setToolTip("Export full hardware, settings, telemetry, and GPU comparison report as Markdown (.md)")
+        self._export_btn.clicked.connect(self._on_export_markdown)
+        row.addWidget(self._export_btn)
+
         bar.body_layout.addLayout(row)
         return bar
 
@@ -371,7 +385,7 @@ class MainWindow(QMainWindow):
         self._upscaler_pills = SegmentedPills(
             [(u.id, u.generic_label) for u in UPSCALERS],
             selected_id="quality",
-            max_cols=3,
+            max_cols=2,
         )
         self._upscaler_pills.changed.connect(self._on_display_or_setting_changed)
         display_card.body_layout.addWidget(self._upscaler_pills)
@@ -383,6 +397,18 @@ class MainWindow(QMainWindow):
         )
         self._fg_pills.changed.connect(self._on_display_or_setting_changed)
         display_card.body_layout.addWidget(self._fg_pills)
+
+        dlss5_lbl = self._make_field_label("DLSS 5 Neural Rendering")
+        dlss5_lbl.setToolTip(
+            "DLSS 5 Neural Rendering trades ~28% GPU FPS + 1.3 GB VRAM for AI-synthesized materials & lighting"
+        )
+        display_card.body_layout.addWidget(dlss5_lbl)
+        self._dlss5_pills = SegmentedPills(
+            [("off", "Off"), ("on", "On (3D-Guided)")],
+            selected_id="off",
+        )
+        self._dlss5_pills.changed.connect(self._on_display_or_setting_changed)
+        display_card.body_layout.addWidget(self._dlss5_pills)
 
         layout.addWidget(display_card)
 
@@ -541,6 +567,34 @@ class MainWindow(QMainWindow):
             row.set_language(self._lang)
         self._diagnosis_box.set_language(self._lang)
 
+    def _on_export_markdown(self) -> None:
+        default_name = "gta6_fps_report.md"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export GTA VI Telemetry Report",
+            default_name,
+            "Markdown Files (*.md);;All Files (*)",
+        )
+        if not file_path:
+            return
+        target = Path(file_path)
+        if target.suffix.lower() != ".md":
+            target = target.with_suffix(".md")
+        try:
+            self._export_markdown_to_path(target)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export Failed", f"Could not save report:\n{exc}")
+            return
+
+        self._export_btn.setText("Exported ✓")
+        QTimer.singleShot(2200, lambda: self._export_btn.setText("Export .md"))
+
+    def _export_markdown_to_path(self, target: Path) -> Path:
+        sim_input = self._collect_input()
+        markdown = export_simulation_markdown(sim_input)
+        target.write_text(markdown, encoding="utf-8")
+        return target
+
     def _apply_hardware_preset(self, preset_id: str, recalculate: bool = True) -> None:
         preset = PRESET_BY_ID[preset_id]
         self._suppress_recalc = True
@@ -660,17 +714,47 @@ class MainWindow(QMainWindow):
         gpu = GPU_BY_ID[gpu_id]
 
         for u in UPSCALERS:
-            self._upscaler_pills.update_label(u.id, u.display_label(gpu.upscaler_brand))
+            self._upscaler_pills.update_label(u.id, u.display_label(gpu.upscaler_brand, gpu.vendor))
+            supported = u.is_supported_by(gpu.vendor)
+            tip = u.description_en if supported else u.disabled_tooltip(gpu.vendor)
+            self._upscaler_pills.set_option_enabled(u.id, supported, tip)
 
-        # Disable MFG 3x/4x on GPUs without RTX 50-series Multi-Frame Gen
-        mfg_tip = "" if gpu.supports_mfg else f"Multi-Frame Gen requires RTX 50-series ({gpu.name} supports up to 2x FG)."
-        self._fg_pills.set_option_enabled("3x", gpu.supports_mfg, mfg_tip)
-        self._fg_pills.set_option_enabled("4x", gpu.supports_mfg, mfg_tip)
-        self._fg_pills.set_option_enabled("2x", gpu.supports_fg, "")
+        cur_upscaler = self._upscaler_pills.current_id()
+        resolved_upscaler = resolve_upscaler_for_vendor(cur_upscaler, gpu.vendor)
+        if resolved_upscaler != cur_upscaler:
+            self._upscaler_pills.set_selected(resolved_upscaler)
+
+        # Dynamically enable/disable 2x FG, 3x/4x MFG (RTX 50 & XeSS 3), and 6x MFG (DLSS 4.5)
+        self._fg_pills.set_option_enabled("2x", gpu.supports_fg and gpu.max_fg_factor >= 2, "")
+        mfg_tip = (
+            ""
+            if gpu.max_fg_factor >= 3
+            else f"Multi-Frame Gen requires RTX 50-series or Intel XeSS 3 ({gpu.name} supports up to 2x FG)."
+        )
+        self._fg_pills.set_option_enabled("3x", gpu.supports_fg and gpu.max_fg_factor >= 3, mfg_tip)
+        self._fg_pills.set_option_enabled("4x", gpu.supports_fg and gpu.max_fg_factor >= 4, mfg_tip)
+        mfg6_tip = (
+            ""
+            if gpu.max_fg_factor >= 6
+            else f"6x Multi-Frame Gen (DLSS 4.5) requires RTX 50-series ({gpu.name} supports up to {gpu.max_fg_factor}x)."
+        )
+        self._fg_pills.set_option_enabled("6x", gpu.supports_fg and gpu.max_fg_factor >= 6, mfg6_tip)
 
         cur_fg = self._fg_pills.current_id()
-        if cur_fg in ("3x", "4x") and not gpu.supports_mfg:
-            self._fg_pills.set_selected("2x")
+        cur_fg_mode = FRAME_GEN_BY_ID.get(cur_fg)
+        if cur_fg_mode is not None and cur_fg_mode.max_factor > gpu.max_fg_factor:
+            supported_modes = [m for m in FRAME_GEN_MODES if m.max_factor <= gpu.max_fg_factor]
+            self._fg_pills.set_selected(supported_modes[-1].id if supported_modes else "off")
+
+        dlss5_on_tip = (
+            "DLSS 5 Neural Rendering trades ~28% GPU FPS + 1.3 GB VRAM for AI-synthesized materials & lighting"
+            if gpu.supports_dlss5
+            else "DLSS 5 3D-Guided Neural Rendering requires RTX 50-series Tensor Cores"
+        )
+        self._dlss5_pills.set_option_enabled("on", gpu.supports_dlss5, dlss5_on_tip)
+        self._dlss5_pills.set_option_enabled("off", True, dlss5_on_tip)
+        if not gpu.supports_dlss5 and self._dlss5_pills.current_id() == "on":
+            self._dlss5_pills.set_selected("off")
 
     def _collect_input(self) -> SimulationInput:
         storage_str = self._storage_pills.current_id()
@@ -688,6 +772,7 @@ class MainWindow(QMainWindow):
             upscaler_id=self._upscaler_pills.current_id(),
             frame_gen_id=self._fg_pills.current_id(),
             settings=dict(self._settings_state),
+            dlss5_enabled=(self._dlss5_pills.current_id() == "on"),
         )
 
     def _recalculate(self) -> None:
@@ -719,8 +804,9 @@ class MainWindow(QMainWindow):
         # Header render scale badge
         res_lbl = next((r.label for r in RESOLUTIONS if r.id == sim_input.resolution_id), sim_input.resolution_id)
         up_obj = next((u for u in UPSCALERS if u.id == sim_input.upscaler_id), UPSCALERS[0])
+        dlss5_tag = " • DLSS 5" if result.effective_dlss5 else ""
         self._render_scale_chip.setText(
-            f"Render: {res_lbl} • {up_obj.display_label(gpu.upscaler_brand)} ({result.effective_res_factor:.2f}x)"
+            f"Render: {res_lbl} • {up_obj.display_label(gpu.upscaler_brand, gpu.vendor)} ({result.effective_res_factor:.2f}x){dlss5_tag}"
         )
 
         # Right column telemetry updates

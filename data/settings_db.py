@@ -20,22 +20,86 @@ class ResolutionProfile:
 
 @dataclass(frozen=True, slots=True)
 class UpscalerProfile:
-    """Internal render resolution multiplier for native or spatial/temporal upscalers."""
+    """Internal render resolution multiplier for native or vendor-specific upscalers."""
 
     id: str
     generic_label: str
     render_multiplier: float
     description_en: str
     description_fa: str
+    intel_multiplier: float | None = None
+    amd_multiplier: float | None = None
+    supported_vendors: tuple[str, ...] = ("NVIDIA", "AMD", "Intel", "Console")
 
-    def display_label(self, brand: str) -> str:
+    def is_supported_by(self, vendor: str) -> bool:
+        """Return True when this upscaler preset exists natively for the GPU vendor."""
+        return vendor in self.supported_vendors
+
+    def multiplier_for_vendor(self, vendor: str) -> float:
+        """Return effective render cost multiplier for `(upscaler_id, vendor)`."""
+        if vendor == "Intel" and self.intel_multiplier is not None:
+            return self.intel_multiplier
+        if vendor == "AMD" and self.amd_multiplier is not None:
+            return self.amd_multiplier
+        return self.render_multiplier
+
+    def scale_label_for(self, brand: str, vendor: str | None = None) -> str:
+        """Return vendor-accurate scale factor tag (e.g. '1.3x', '1.5x', '1.7x')."""
+        is_intel = vendor == "Intel" or (vendor is None and brand == "XeSS")
+        if self.id in ("native", "native_aa"):
+            return "1.0x"
+        if self.id == "ultra_quality_plus":
+            return "1.3x"
+        if self.id == "ultra_quality":
+            return "1.5x" if is_intel else "1.3x"
+        if self.id == "quality":
+            return "1.7x" if is_intel else "1.5x"
+        if self.id == "balanced":
+            return "2.0x" if is_intel else "1.72x"
+        if self.id == "performance":
+            return "2.3x" if is_intel else "2.0x"
+        if self.id == "ultra_performance":
+            return "3.0x"
+        return ""
+
+    def disabled_tooltip(self, vendor: str) -> str:
+        """Return vendor-specific lock explanation when the preset is unavailable."""
+        if self.id == "ultra_quality_plus" and vendor != "Intel":
+            return "Intel XeSS 3 exclusive preset (1.3x)"
+        if self.id == "ultra_quality" and vendor == "NVIDIA":
+            return "DLSS uses Quality (1.5x) or DLSS Override; no native Ultra Quality preset"
+        return ""
+
+    def display_label(self, brand: str, vendor: str | None = None) -> str:
         """Return vendor-specific pill label (DLSS / FSR / XeSS)."""
+        scale = self.scale_label_for(brand, vendor)
         if self.id == "native":
-            return "Native"
+            return "Native (1.0x)"
         if self.id == "native_aa":
-            aa_name = "DLAA" if brand == "DLSS" else f"{brand} AA"
-            return f"Native AA ({aa_name})"
-        return f"{brand} {self.generic_label}"
+            if brand == "DLSS":
+                return "DLAA (1.0x)"
+            if brand == "XeSS":
+                return "XeSS Native AA (1.0x)"
+            return f"{brand} AA (1.0x)"
+        if self.id == "ultra_quality_plus":
+            return f"XeSS Ultra Quality Plus ({scale})"
+        if self.id == "ultra_quality":
+            if vendor == "NVIDIA" or (vendor is None and brand == "DLSS"):
+                return "Ultra Quality (N/A)"
+            return f"{brand} Ultra Quality ({scale})"
+        if self.id == "ultra_performance":
+            return f"{brand} Ultra Perf ({scale})"
+        return f"{brand} {self.generic_label} ({scale})"
+
+
+def resolve_upscaler_for_vendor(upscaler_id: str, vendor: str) -> str:
+    """Map an unavailable upscaler preset to the closest supported preset for `vendor`."""
+    profile = UPSCALER_BY_ID.get(upscaler_id)
+    if profile is not None and profile.is_supported_by(vendor):
+        return upscaler_id
+    if upscaler_id == "ultra_quality_plus" and vendor == "AMD":
+        return "ultra_quality"
+    return "quality"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +112,7 @@ class FrameGenProfile:
     base_overhead: float
     requires_fg: bool
     requires_mfg: bool
+    max_factor: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,44 +192,77 @@ UPSCALERS: tuple[UpscalerProfile, ...] = (
         id="native",
         generic_label="Native",
         render_multiplier=1.00,
-        description_en="Full native pixel rendering without spatial upscaling.",
-        description_fa="رندر کامل رزولوشن بومی بدون ارتقای تصویر.",
+        description_en="Full native pixel rendering (1.0x / 100%) without spatial upscaling.",
+        description_fa="رندر کامل رزولوشن بومی (1.0x / 100%) بدون ارتقای تصویر.",
     ),
     UpscalerProfile(
         id="native_aa",
         generic_label="Native AA",
         render_multiplier=1.04,
-        description_en="Native resolution with AI/temporal anti-aliasing (~4% shader cost).",
+        description_en="Native 1.0x resolution with AI/temporal anti-aliasing (~4% shader cost).",
         description_fa="رزولوشن بومی همراه با آنتی‌آلیاسینگ هوش مصنوعی (حدود ۴٪ بار اضافه).",
+    ),
+    UpscalerProfile(
+        id="ultra_quality_plus",
+        generic_label="Ultra Quality Plus",
+        render_multiplier=0.68,
+        intel_multiplier=0.68,
+        supported_vendors=("Intel",),
+        description_en="Intel XeSS 3 exclusive 1.3x (77% internal scale) near-native mode.",
+        description_fa="حالت انحصاری Intel XeSS 3 با مقیاس 1.3x (۷۷٪ رزولوشن داخلی) نزدیک به بومی.",
+    ),
+    UpscalerProfile(
+        id="ultra_quality",
+        generic_label="Ultra Quality",
+        render_multiplier=0.68,
+        intel_multiplier=0.55,
+        amd_multiplier=0.68,
+        supported_vendors=("Intel", "AMD", "Console"),
+        description_en="XeSS Ultra Quality (1.5x / 67%) or FSR Ultra Quality (1.3x / 77%).",
+        description_fa="کیفیت فوق‌عالی XeSS (1.5x / 67%) یا FSR (1.3x / 77%).",
     ),
     UpscalerProfile(
         id="quality",
         generic_label="Quality",
         render_multiplier=0.55,
-        description_en="~67% internal resolution scale; high clarity + strong FPS gain.",
-        description_fa="مقیاس داخلی حدود ۶۷٪؛ وضوح عالی با افزایش چشمگیر فریم‌ریت.",
+        intel_multiplier=0.45,
+        amd_multiplier=0.55,
+        description_en="DLSS/FSR Quality (1.5x / 67%) or XeSS Quality (1.7x / 59%).",
+        description_fa="حالت Quality: مقیاس 1.5x در DLSS/FSR یا 1.7x در XeSS.",
     ),
     UpscalerProfile(
         id="balanced",
         generic_label="Balanced",
         render_multiplier=0.45,
-        description_en="~58% internal resolution scale; great middle ground at 1440p/4K.",
-        description_fa="مقیاس داخلی حدود ۵۸٪؛ تعادل مناسب برای 1440p و 4K.",
+        intel_multiplier=0.37,
+        amd_multiplier=0.45,
+        description_en="DLSS/FSR Balanced (1.72x / 58%) or XeSS Balanced (2.0x / 50%).",
+        description_fa="حالت Balanced: مقیاس 1.72x در DLSS/FSR یا 2.0x در XeSS.",
     ),
     UpscalerProfile(
         id="performance",
         generic_label="Performance",
         render_multiplier=0.37,
-        description_en="~50% internal resolution scale; maximizes GPU headroom.",
-        description_fa="مقیاس داخلی ۵۰٪؛ بیشترین افزایش فریم برای کارت‌های ضعیف‌تر یا 4K.",
+        intel_multiplier=0.30,
+        amd_multiplier=0.37,
+        description_en="DLSS/FSR Performance (2.0x / 50%) or XeSS Performance (2.3x / 43%).",
+        description_fa="حالت Performance: مقیاس 2.0x در DLSS/FSR یا 2.3x در XeSS.",
+    ),
+    UpscalerProfile(
+        id="ultra_performance",
+        generic_label="Ultra Perf",
+        render_multiplier=0.26,
+        description_en="3.0x (33% internal scale) clamped at the 0.26 fixed RT floor.",
+        description_fa="مقیاس 3.0x (۳۳٪ رزولوشن داخلی) محدود به کف ثابت ۰.۲۶ ردیابی پرتو.",
     ),
 )
 
 FRAME_GEN_MODES: tuple[FrameGenProfile, ...] = (
-    FrameGenProfile("off", "Off", 1.00, 0.00, requires_fg=False, requires_mfg=False),
-    FrameGenProfile("2x", "2x FG", 1.72, 0.08, requires_fg=True, requires_mfg=False),
-    FrameGenProfile("3x", "MFG 3x", 2.40, 0.09, requires_fg=True, requires_mfg=True),
-    FrameGenProfile("4x", "MFG 4x", 3.00, 0.10, requires_fg=True, requires_mfg=True),
+    FrameGenProfile("off", "Off", 1.00, 0.00, requires_fg=False, requires_mfg=False, max_factor=1),
+    FrameGenProfile("2x", "2x FG", 1.72, 0.08, requires_fg=True, requires_mfg=False, max_factor=2),
+    FrameGenProfile("3x", "MFG 3x", 2.40, 0.09, requires_fg=True, requires_mfg=True, max_factor=3),
+    FrameGenProfile("4x", "MFG 4x", 3.00, 0.10, requires_fg=True, requires_mfg=True, max_factor=4),
+    FrameGenProfile("6x", "MFG 6x", 3.95, 0.12, requires_fg=True, requires_mfg=True, max_factor=6),
 )
 
 SETTINGS: tuple[SettingDefinition, ...] = (
@@ -176,7 +274,7 @@ SETTINGS: tuple[SettingDefinition, ...] = (
         options=(
             SettingOption("Medium", rt_cost=0.00, vram_mb=0.0),
             SettingOption("High", rt_cost=0.28, vram_mb=450.0),
-            SettingOption("Ultra", rt_cost=0.55, vram_mb=800.0),
+            SettingOption("Ultra", rt_cost=0.55, vram_mb=1100.0),
         ),
         default_option="Medium",
         tex2_subsettings="Diffuse GI, Probe Resolution, Bounce Count, GI Radiance Cache",
@@ -240,7 +338,7 @@ SETTINGS: tuple[SettingDefinition, ...] = (
             SettingOption("Low", cpu_cost=-0.08, vram_mb=-350.0),
             SettingOption("Medium", cpu_cost=-0.04, vram_mb=-180.0),
             SettingOption("High", cpu_cost=0.00, rt_cost=0.00, vram_mb=0.0),
-            SettingOption("Ultra", cpu_cost=0.13, rt_cost=0.05, vram_mb=450.0),
+            SettingOption("Ultra", cpu_cost=0.13, rt_cost=0.05, vram_mb=450.0, ram_mb=900.0),
         ),
         default_option="High",
         tex2_subsettings="RT BVH Geometry LOD, Dynamic Instance Rebuild, Foliage BVH Inclusion",
@@ -281,7 +379,7 @@ SETTINGS: tuple[SettingDefinition, ...] = (
         options=(
             SettingOption("Medium", vram_mb=-1300.0),
             SettingOption("High", vram_mb=0.0),
-            SettingOption("Ultra", vram_mb=1600.0, raster_cost=0.02),
+            SettingOption("Ultra", vram_mb=2100.0, ram_mb=1400.0, raster_cost=0.02),
         ),
         default_option="High",
         tex2_subsettings="World Streaming Pool, Mip Bias, Anisotropic Quality, Normal/Roughness Maps",
@@ -323,7 +421,7 @@ SETTINGS: tuple[SettingDefinition, ...] = (
         options=(
             SettingOption("Low", raster_cost=-0.07, cpu_cost=-0.03),
             SettingOption("Medium", raster_cost=0.00, cpu_cost=0.00, vram_mb=0.0),
-            SettingOption("High", raster_cost=0.12, cpu_cost=0.04, vram_mb=250.0),
+            SettingOption("High", raster_cost=0.12, cpu_cost=0.04, vram_mb=250.0, ram_mb=350.0),
         ),
         default_option="Medium",
         tex2_subsettings="Tree Density & LOD, Terrain Detail, Grass Shadows, Foliage Alpha Shadows",
@@ -344,7 +442,7 @@ SETTINGS: tuple[SettingDefinition, ...] = (
         options=(
             SettingOption("0.8", cpu_cost=-0.06, raster_cost=-0.05),
             SettingOption("1.0", cpu_cost=0.00, raster_cost=0.00, vram_mb=0.0),
-            SettingOption("1.2", cpu_cost=0.12, raster_cost=0.09, vram_mb=350.0),
+            SettingOption("1.2", cpu_cost=0.12, raster_cost=0.09, vram_mb=350.0, ram_mb=850.0),
         ),
         default_option="1.0",
         tex2_subsettings="World Geometry LOD Distance, Building Detail Pop-in Scale",
@@ -366,7 +464,7 @@ SETTINGS: tuple[SettingDefinition, ...] = (
             SettingOption("Low", raster_cost=-0.04, cpu_cost=-0.01),
             SettingOption("Medium", raster_cost=-0.02),
             SettingOption("High", raster_cost=0.00, cpu_cost=0.00, vram_mb=0.0),
-            SettingOption("Ultra", raster_cost=0.05, cpu_cost=0.01, vram_mb=150.0),
+            SettingOption("Ultra", raster_cost=0.05, cpu_cost=0.01, vram_mb=150.0, ram_mb=200.0),
         ),
         default_option="High",
         tex2_subsettings="Ocean FFT Wave Simulation, Shoreline Foam, Adaptive Terrain Tessellation",
@@ -386,7 +484,7 @@ SETTINGS: tuple[SettingDefinition, ...] = (
             SettingOption("Low", raster_cost=-0.09),
             SettingOption("Medium", raster_cost=0.00, vram_mb=0.0),
             SettingOption("High", raster_cost=0.16, vram_mb=200.0),
-            SettingOption("Ultra", raster_cost=0.28, vram_mb=350.0),
+            SettingOption("Ultra", raster_cost=0.28, vram_mb=350.0, ram_mb=250.0),
         ),
         default_option="Medium",
         tex2_subsettings="Volumetric Fog Froxels, Cloud Shadows, Atmospheric Scattering, Particle Lit Fog",
@@ -408,7 +506,7 @@ SETTINGS: tuple[SettingDefinition, ...] = (
             SettingOption("Low", raster_cost=-0.04, cpu_cost=-0.02),
             SettingOption("Medium", raster_cost=-0.02),
             SettingOption("High", raster_cost=0.00, cpu_cost=0.00, vram_mb=0.0),
-            SettingOption("Ultra", raster_cost=0.05, cpu_cost=0.02, vram_mb=150.0),
+            SettingOption("Ultra", raster_cost=0.05, cpu_cost=0.02, vram_mb=150.0, ram_mb=200.0),
         ),
         default_option="High",
         tex2_subsettings="Strand-Based Hair Rendering, Wind & Character Hair Physics",
@@ -449,7 +547,7 @@ SETTINGS: tuple[SettingDefinition, ...] = (
         options=(
             SettingOption("Medium", cpu_cost=-0.12),
             SettingOption("High", cpu_cost=0.00),
-            SettingOption("Ultra", cpu_cost=0.14),
+            SettingOption("Ultra", cpu_cost=0.14, ram_mb=750.0),
         ),
         default_option="High",
         tex2_subsettings="AI Navigation & Reaction Tick, Ragdoll/Cloth Physics, Vehicle Suspension Solver",

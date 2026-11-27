@@ -31,6 +31,8 @@ class GPUProfile:
     supports_fg: bool
     supports_mfg: bool
     notes: str
+    max_fg_factor: int = 2
+    supports_dlss5: bool = False
     is_unified_memory: bool = False
     is_laptop_thermal: bool = False
     is_reference_console: bool = False
@@ -92,10 +94,12 @@ GPUS: tuple[GPUProfile, ...] = (
         driver_cpu_overhead=0.02,
         driver_cpu_overhead_no_rebar=0.04,
         upscaler_brand="DLSS",
-        fg_label="DLSS 4 + MFG (4x)",
+        fg_label="DLSS 4.5 + MFG (6x)",
         supports_fg=True,
         supports_mfg=True,
-        notes="Flagship Blackwell",
+        notes="Flagship Blackwell; DLSS 4.5 6x MFG & DLSS 5 Neural Rendering",
+        max_fg_factor=6,
+        supports_dlss5=True,
     ),
     GPUProfile(
         id="rtx_5070_ti",
@@ -110,10 +114,12 @@ GPUS: tuple[GPUProfile, ...] = (
         driver_cpu_overhead=0.02,
         driver_cpu_overhead_no_rebar=0.04,
         upscaler_brand="DLSS",
-        fg_label="DLSS 4 + MFG (4x)",
+        fg_label="DLSS 4.5 + MFG (6x)",
         supports_fg=True,
         supports_mfg=True,
-        notes="Strong RT & DLSS",
+        notes="Strong RT, DLSS 4.5 6x MFG & DLSS 5 Neural Rendering",
+        max_fg_factor=6,
+        supports_dlss5=True,
     ),
     GPUProfile(
         id="rx_9070_xt",
@@ -128,10 +134,11 @@ GPUS: tuple[GPUProfile, ...] = (
         driver_cpu_overhead=0.01,
         driver_cpu_overhead_no_rebar=0.04,
         upscaler_brand="FSR",
-        fg_label="FSR 4 + FG (2x)",
+        fg_label="FSR 4.1 Redstone + FG (2x)",
         supports_fg=True,
         supports_mfg=False,
-        notes="Strong RDNA 4 raster & improved RT",
+        notes="Strong RDNA 4 raster & improved RT (FSR Redstone 2x FG)",
+        max_fg_factor=2,
     ),
     GPUProfile(
         id="rx_6900_xt",
@@ -146,10 +153,11 @@ GPUS: tuple[GPUProfile, ...] = (
         driver_cpu_overhead=0.01,
         driver_cpu_overhead_no_rebar=0.04,
         upscaler_brand="FSR",
-        fg_label="FSR 3 FG (2x)",
+        fg_label="FSR 4.1 (INT8 ML) + FSR FG (2x)",
         supports_fg=True,
         supports_mfg=False,
-        notes="High raster, weak RDNA 2 RT!",
+        notes="High raster, FSR 4.1 (INT8 ML) + FSR FG (2x), weak RDNA 2 RT!",
+        max_fg_factor=2,
     ),
     GPUProfile(
         id="rx_9060_xt_16",
@@ -164,10 +172,11 @@ GPUS: tuple[GPUProfile, ...] = (
         driver_cpu_overhead=0.01,
         driver_cpu_overhead_no_rebar=0.04,
         upscaler_brand="FSR",
-        fg_label="FSR 4 + FG (2x)",
+        fg_label="FSR 4.1 Redstone + FG (2x)",
         supports_fg=True,
         supports_mfg=False,
-        notes="Safe VRAM headroom",
+        notes="Safe VRAM headroom (FSR Redstone 2x FG)",
+        max_fg_factor=2,
     ),
     GPUProfile(
         id="rx_9060_xt_8",
@@ -182,10 +191,11 @@ GPUS: tuple[GPUProfile, ...] = (
         driver_cpu_overhead=0.01,
         driver_cpu_overhead_no_rebar=0.04,
         upscaler_brand="FSR",
-        fg_label="FSR 4 + FG (2x)",
+        fg_label="FSR 4.1 Redstone + FG (2x)",
         supports_fg=True,
         supports_mfg=False,
-        notes="Vulnerable to 8GB VRAM overflow",
+        notes="Vulnerable to 8GB VRAM overflow (FSR Redstone 2x FG)",
+        max_fg_factor=2,
     ),
     GPUProfile(
         id="arc_b580",
@@ -200,10 +210,11 @@ GPUS: tuple[GPUProfile, ...] = (
         driver_cpu_overhead=0.07,
         driver_cpu_overhead_no_rebar=0.28,
         upscaler_brand="XeSS",
-        fg_label="XeSS + XeSS FG (2x)",
+        fg_label="XeSS 3 MFG (4x)",
         supports_fg=True,
-        supports_mfg=False,
-        notes="Sensitive to ReBAR & VRAM spillover over x8",
+        supports_mfg=True,
+        notes="Sensitive to ReBAR & VRAM spillover over x8; supports XeSS 3 4x MFG",
+        max_fg_factor=4,
     ),
     GPUProfile(
         id="rtx_4060",
@@ -221,7 +232,8 @@ GPUS: tuple[GPUProfile, ...] = (
         fg_label="DLSS 3/4 FG (2x)",
         supports_fg=True,
         supports_mfg=False,
-        notes="8GB VRAM limit hits hard in GTA VI",
+        notes="8GB VRAM limit hits hard in GTA VI (2x FG max)",
+        max_fg_factor=2,
     ),
     GPUProfile(
         id="arc_140v",
@@ -236,10 +248,11 @@ GPUS: tuple[GPUProfile, ...] = (
         driver_cpu_overhead=0.06,
         driver_cpu_overhead_no_rebar=0.14,
         upscaler_brand="XeSS",
-        fg_label="XeSS FG (2x)",
+        fg_label="XeSS 3 MFG (4x)",
         supports_fg=True,
-        supports_mfg=False,
-        notes="Coupled 17-25W thermal budget + shared 16GB RAM/VRAM pool",
+        supports_mfg=True,
+        notes="Coupled 17-25W thermal budget + shared 16GB RAM/VRAM pool (XeSS 3 4x MFG)",
+        max_fg_factor=4,
         is_unified_memory=True,
         is_laptop_thermal=True,
     ),
@@ -263,6 +276,7 @@ CONSOLE_REFERENCES: tuple[GPUProfile, ...] = (
         supports_fg=False,
         supports_mfg=False,
         notes="Base PS5 GPU target reference (Score 100/75, 12.5GB pool)",
+        max_fg_factor=1,
         is_reference_console=True,
     ),
     GPUProfile(
@@ -282,6 +296,7 @@ CONSOLE_REFERENCES: tuple[GPUProfile, ...] = (
         supports_fg=False,
         supports_mfg=False,
         notes="PS5 Pro GPU target reference (Score 180/175, 14GB pool)",
+        max_fg_factor=1,
         is_reference_console=True,
     ),
 )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Literal
 
 from data.hardware_db import (
@@ -19,6 +20,7 @@ from data.hardware_db import (
 )
 from data.settings_db import (
     FRAME_GEN_BY_ID,
+    FRAME_GEN_MODES,
     RESOLUTION_BY_ID,
     SETTING_BY_ID,
     SETTINGS,
@@ -52,6 +54,7 @@ class SimulationInput:
     upscaler_id: str
     frame_gen_id: str
     settings: dict[str, str]
+    dlss5_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +101,7 @@ class SimulationResult:
     diagnosis_fa: str
     recommendation_en: str
     recommendation_fa: str
+    effective_dlss5: bool = False
     warnings: tuple[WarningMessage, ...] = field(default_factory=tuple)
 
 
@@ -148,16 +152,22 @@ def _resolve_fg(gpu: GPUProfile, requested_fg_id: str) -> tuple[str, float, floa
     fg = FRAME_GEN_BY_ID.get(requested_fg_id, FRAME_GEN_BY_ID["off"])
     if fg.id == "off":
         return "off", 1.0, 0.0, None
-    if not gpu.supports_fg:
+    if not gpu.supports_fg or gpu.max_fg_factor < 2:
         return "off", 1.0, 0.0, f"{gpu.name} does not support PC Frame Generation; reverted to Off."
-    if fg.requires_mfg and not gpu.supports_mfg:
-        fallback = FRAME_GEN_BY_ID["2x"]
-        return (
-            fallback.id,
-            fallback.fps_multiplier,
-            fallback.base_overhead,
-            f"MFG ({fg.label}) requires RTX 50-series; fell back to 2x FG ({gpu.fg_label}).",
-        )
+    if fg.max_factor > gpu.max_fg_factor:
+        supported = [m for m in FRAME_GEN_MODES if m.max_factor <= gpu.max_fg_factor]
+        fallback = supported[-1] if supported else FRAME_GEN_BY_ID["off"]
+        if gpu.max_fg_factor >= 4:
+            note = (
+                f"{fg.label} requires RTX 50-series (DLSS 4.5); "
+                f"fell back to {fallback.label} ({gpu.fg_label})."
+            )
+        else:
+            note = (
+                f"MFG ({fg.label}) requires RTX 50-series or Intel XeSS 3; "
+                f"fell back to {fallback.label} ({gpu.fg_label})."
+            )
+        return fallback.id, fallback.fps_multiplier, fallback.base_overhead, note
     return fg.id, fg.fps_multiplier, fg.base_overhead, None
 
 
@@ -194,8 +204,11 @@ def simulate(
     upscaler = UPSCALER_BY_ID[sim_input.upscaler_id]
 
     eff_fg_id, fg_mult, _fg_overhead, fg_note = _resolve_fg(gpu, sim_input.frame_gen_id)
+    eff_dlss5 = bool(sim_input.dlss5_enabled and gpu.supports_dlss5)
     # Fixed RT & shader overhead prevents sub-540p internal scales from scaling linearly.
-    effective_res_factor = max(0.26, res.base_res_factor * upscaler.render_multiplier)
+    effective_res_factor = max(
+        0.26, res.base_res_factor * upscaler.multiplier_for_vendor(gpu.vendor)
+    )
 
     raw_raster, raw_rt, raw_cpu, delta_vram_mb, delta_ram_mb = _accumulate_costs(sim_input.settings)
 
@@ -209,9 +222,10 @@ def simulate(
 
     # 1. VRAM & System RAM demand
     fg_vram_gb = 0.55 if eff_fg_id != "off" else 0.0
+    dlss5_vram_gb = 1.3 if eff_dlss5 else 0.0
     vram_used_gb = max(
         3.0,
-        7.4 + res.vram_delta_gb + fg_vram_gb + (delta_vram_mb / 1024.0),
+        7.4 + res.vram_delta_gb + fg_vram_gb + dlss5_vram_gb + (delta_vram_mb / 1024.0),
     )
     os_ram_gb = 4.2
     game_ram_gb = max(4.5, 8.2 + (delta_ram_mb / 1024.0))
@@ -241,8 +255,13 @@ def simulate(
     weighted_gpu_score = (raster_share * gpu.raster_score + rt_share * gpu.rt_score) / 100.0
     oc_mult = 1.0 + (max(0, min(7, sim_input.gpu_oc_percent)) / 100.0)
     weighted_gpu_demand = raster_share * damped_raster + rt_share * damped_rt
+    dlss5_gpu_tax = 1.38 if eff_dlss5 else 1.0
 
-    raw_gpu_fps = (weighted_gpu_score * oc_mult / weighted_gpu_demand) * 32.0 / effective_res_factor
+    raw_gpu_fps = (
+        (weighted_gpu_score * oc_mult / (weighted_gpu_demand * dlss5_gpu_tax))
+        * 32.0
+        / effective_res_factor
+    )
 
     # Dedicated VRAM or Unified Pool GPU spillover penalty
     if is_unified_pool:
@@ -364,6 +383,7 @@ def simulate(
         damped_raster=damped_raster,
         is_thermal_coupled=is_thermal_coupled,
         storage_type=sim_input.storage_type,
+        effective_dlss5=eff_dlss5,
     )
 
     return SimulationResult(
@@ -395,6 +415,7 @@ def simulate(
         diagnosis_fa=diag_fa,
         recommendation_en=rec_en,
         recommendation_fa=rec_fa,
+        effective_dlss5=eff_dlss5,
         warnings=tuple(warnings),
     )
 
@@ -587,6 +608,7 @@ def _build_diagnosis(
     damped_raster: float,
     is_thermal_coupled: bool,
     storage_type: StorageType,
+    effective_dlss5: bool = False,
 ) -> tuple[str, str, str, str]:
     thermal_suffix_en = (
         " Shared 20-25W laptop TDP also caps sustained boost." if is_thermal_coupled else ""
@@ -596,15 +618,27 @@ def _build_diagnosis(
         if is_thermal_coupled
         else ""
     )
+    dlss5_suffix_en = (
+        " DLSS 5 Neural Rendering trades ~28% GPU FPS + 1.3 GB VRAM for AI-synthesized materials & lighting."
+        if effective_dlss5
+        else ""
+    )
+    dlss5_suffix_fa = (
+        " رندر عصبی DLSS 5 حدود ۲۸٪ فریم GPU و ۱.۳ گیگابایت VRAM را صرف متریال و نورپردازی هوش مصنوعی می‌کند."
+        if effective_dlss5
+        else ""
+    )
 
     if primary_bottleneck == "VRAM Overflow":
         diag_en = (
             f"VRAM Spillover Bottleneck: GTA VI requests {vram_used_gb:.1f} GB on {gpu.name}'s "
             f"{vram_total_gb:.0f} GB buffer (+{vram_overflow_gb:.1f} GB spill over {gpu.pcie_lanes})."
+            f"{dlss5_suffix_en}"
         )
         diag_fa = (
             f"گلوگاه سرریز VRAM: بازی به {vram_used_gb:.1f} گیگابایت نیاز دارد در حالی که کارت "
             f"{vram_total_gb:.0f} گیگابایت حافظه دارد (+{vram_overflow_gb:.1f} GB سرریز)."
+            f"{dlss5_suffix_fa}"
         )
         rec_en = (
             "Drop Texture Quality to High/Medium, Vehicle HD Count to High, or disable RT Shadows "
@@ -635,10 +669,11 @@ def _build_diagnosis(
         else:
             diag_en = (
                 f"System RAM Overflow: {ram_overflow_gb:.1f} GB beyond physical RAM forces Windows "
-                "disk paging during streaming."
+                f"disk paging during streaming.{dlss5_suffix_en}"
             )
             diag_fa = (
                 f"گلوگاه کمبود رم سیستم: {ram_overflow_gb:.1f} گیگابایت سرریز به دیسک باعث افت شدید فریم می‌شود."
+                f"{dlss5_suffix_fa}"
             )
             rec_en = "Drop Pedestrian & Vehicle Density to Medium/Low and close background browsers."
             rec_fa = "تراکم عابران و خودروها را کاهش دهید و برنامه‌های پس‌زمینه را ببندید."
@@ -653,12 +688,12 @@ def _build_diagnosis(
         diag_en = (
             f"CPU Simulation Bottleneck: {cpu.name} + {ram_speed.name}{overhead_txt} caps FPS around "
             f"{effective_cpu_fps:.0f} FPS while GPU headroom reaches {effective_gpu_fps:.0f} FPS."
-            f"{thermal_suffix_en}"
+            f"{thermal_suffix_en}{dlss5_suffix_en}"
         )
         diag_fa = (
             f"گلوگاه پردازنده (CPU): ترکیب {cpu.name} و {ram_speed.name} سقف فریم را روی حدود "
             f"{effective_cpu_fps:.0f} فریم محدود کرده، در حالی که کارت گرافیک توان {effective_gpu_fps:.0f} فریم را دارد."
-            f"{thermal_suffix_fa}"
+            f"{thermal_suffix_fa}{dlss5_suffix_fa}"
         )
         if gpu.id == "arc_b580" and not rebar_enabled:
             rec_en = "Enable Resizable BAR in BIOS immediately, then reduce Pedestrian Density or BVH Quality."
@@ -680,17 +715,19 @@ def _build_diagnosis(
         aspect_fa = "ردیابی پرتو (RTGI / سایه RT / بازتاب‌ها)" if rt_heavy else "پردازش شیدر و پیکسل"
         diag_en = (
             f"GPU Bound ({aspect_en}): {gpu.name} limits output to {effective_gpu_fps:.0f} FPS "
-            f"while {cpu.name} can feed {effective_cpu_fps:.0f} FPS.{thermal_suffix_en}"
+            f"while {cpu.name} can feed {effective_cpu_fps:.0f} FPS.{thermal_suffix_en}{dlss5_suffix_en}"
         )
         diag_fa = (
             f"گلوگاه کارت گرافیک ({aspect_fa}): کارت {gpu.name} خروجی را روی {effective_gpu_fps:.0f} فریم "
-            f"محدود کرده در حالی که CPU تا {effective_cpu_fps:.0f} فریم توان دارد.{thermal_suffix_fa}"
+            f"محدود کرده در حالی که CPU تا {effective_cpu_fps:.0f} فریم توان دارد.{thermal_suffix_fa}{dlss5_suffix_fa}"
         )
+        dlss5_tip_en = " or disable DLSS 5 Neural Rendering" if effective_dlss5 else ""
+        dlss5_tip_fa = " یا DLSS 5 را خاموش کنید" if effective_dlss5 else ""
         rec_en = (
-            "Step up Upscaler (Quality/Balanced) or trim RT Shadows, Reflections, and Volumetrics."
+            f"Step up Upscaler (Quality/Balanced){dlss5_tip_en}, or trim RT Shadows, Reflections, and Volumetrics."
         )
         rec_fa = (
-            "حالت آپ‌اسکیلر را به Quality/Balanced تغییر دهید یا RT Shadows، Reflections و Volumetrics را پایین بیاورید."
+            f"حالت آپ‌اسکیلر را به Quality/Balanced تغییر دهید{dlss5_tip_fa} یا RT Shadows، Reflections و Volumetrics را پایین بیاورید."
         )
         return diag_en, diag_fa, rec_en, rec_fa
 
@@ -699,11 +736,11 @@ def _build_diagnosis(
     storage_hint_fa = " (ارتقا به NVMe Gen4 لگ‌های بارگذاری مسیر را حذف می‌کند.)" if storage_type == "SATA / HDD" else ""
     diag_en = (
         f"Well-Balanced System: GPU ({effective_gpu_fps:.0f} FPS) and CPU ({effective_cpu_fps:.0f} FPS) "
-        f"are tightly matched with healthy headroom.{thermal_suffix_en}{storage_hint_en}"
+        f"are tightly matched with healthy headroom.{thermal_suffix_en}{storage_hint_en}{dlss5_suffix_en}"
     )
     diag_fa = (
         f"سیستم متعادل: توان کارت گرافیک ({effective_gpu_fps:.0f} فریم) و پردازنده ({effective_cpu_fps:.0f} فریم) "
-        f"هماهنگی بسیار خوبی دارند.{thermal_suffix_fa}{storage_hint_fa}"
+        f"هماهنگی بسیار خوبی دارند.{thermal_suffix_fa}{storage_hint_fa}{dlss5_suffix_fa}"
     )
     rec_en = "Great balance! Fine-tune Upscaler or Volumetrics/RT Shadows only if targeting higher refresh."
     rec_fa = "تعادل عالی است! تنها در صورت نیاز به فریم بالاتر، آپ‌اسکیلر یا Volumetrics را تنظیم کنید."
@@ -755,7 +792,7 @@ def compare_all_gpus(sim_input: SimulationInput) -> list[GPUComparisonEntry]:
         console_cpu = CPUProfile(
             id=f"{console.id}_cpu",
             name="Console Zen 2",
-            gaming_score=58.0 if console.id == "ps5_ref" else 63.0,
+            gaming_score=42.0 if console.id == "ps5_ref" else 46.0,
             cores_threads="8C / 16T",
             architecture_notes="Custom AMD Zen 2 Console APU",
             socket_hint="Console",
@@ -773,6 +810,7 @@ def compare_all_gpus(sim_input: SimulationInput) -> list[GPUComparisonEntry]:
             upscaler_id=sim_input.upscaler_id,
             frame_gen_id="off",
             settings=sim_input.settings,
+            dlss5_enabled=False,
         )
         res = simulate(console_input, gpu_override=console, cpu_override=console_cpu)
         entries.append(
@@ -847,6 +885,7 @@ def _step_down_setting(settings_map: dict[str, str], setting_id: str) -> str | N
 
 def auto_optimize_for_60_fps(sim_input: SimulationInput, target_fps: float = 60.0) -> AutoOptimizeResult:
     """Intelligently lower only settings causing the active bottleneck toward 60 Base FPS."""
+    gpu = GPU_BY_ID[sim_input.gpu_id]
     working_settings = dict(sim_input.settings)
     working_upscaler = sim_input.upscaler_id
     changed: list[str] = []
@@ -866,6 +905,7 @@ def auto_optimize_for_60_fps(sim_input: SimulationInput, target_fps: float = 60.
                 upscaler_id=working_upscaler,
                 frame_gen_id=sim_input.frame_gen_id,
                 settings=working_settings,
+                dlss5_enabled=sim_input.dlss5_enabled,
             )
         )
 
@@ -915,17 +955,26 @@ def auto_optimize_for_60_fps(sim_input: SimulationInput, target_fps: float = 60.
 
     # Step 3: If GPU is still capping below 60 FPS, step Upscaler up to Balanced (never touch Res/FG).
     while res.base_fps < target_fps and res.raw_gpu_fps < res.raw_cpu_fps * 1.15:
-        if working_upscaler in ("balanced", "performance"):
+        if working_upscaler in ("balanced", "performance", "ultra_performance"):
             break
         if working_upscaler in ("native", "native_aa"):
+            if gpu.vendor == "Intel":
+                next_upscaler = "ultra_quality_plus"
+            elif gpu.vendor == "AMD":
+                next_upscaler = "ultra_quality"
+            else:
+                next_upscaler = "quality"
+        elif working_upscaler == "ultra_quality_plus":
+            next_upscaler = "ultra_quality" if gpu.vendor == "Intel" else "quality"
+        elif working_upscaler == "ultra_quality":
             next_upscaler = "quality"
         elif working_upscaler == "quality":
             next_upscaler = "balanced"
         else:
             break
         changed.append(
-            f"Upscaler: {UPSCALER_BY_ID[working_upscaler].generic_label} -> "
-            f"{UPSCALER_BY_ID[next_upscaler].generic_label}"
+            f"Upscaler: {UPSCALER_BY_ID[working_upscaler].display_label(gpu.upscaler_brand, gpu.vendor)} -> "
+            f"{UPSCALER_BY_ID[next_upscaler].display_label(gpu.upscaler_brand, gpu.vendor)}"
         )
         working_upscaler = next_upscaler
         res = _current_sim()
@@ -960,3 +1009,145 @@ def auto_optimize_for_60_fps(sim_input: SimulationInput, target_fps: float = 60.
         summary_en=summary_en,
         summary_fa=summary_fa,
     )
+
+
+def export_simulation_markdown(
+    sim_input: SimulationInput,
+    result: SimulationResult | None = None,
+    comparisons: list[GPUComparisonEntry] | None = None,
+) -> str:
+    """Format the current hardware, graphics settings, telemetry, and GPU table as Markdown."""
+    res = result or simulate(sim_input)
+    comp = comparisons if comparisons is not None else compare_all_gpus(sim_input)
+
+    gpu = GPU_BY_ID[sim_input.gpu_id]
+    cpu = CPU_BY_ID[sim_input.cpu_id]
+    ram_speed = RAM_SPEED_BY_ID[sim_input.ram_speed_id]
+    resolution = RESOLUTION_BY_ID[sim_input.resolution_id]
+    upscaler = UPSCALER_BY_ID[sim_input.upscaler_id]
+    fg_mode = FRAME_GEN_BY_ID.get(res.effective_fg_id, FRAME_GEN_BY_ID["off"])
+
+    timestamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+    form_factor = (
+        "Laptop (20-25W Coupled TDP)" if sim_input.is_laptop_mode else "Desktop Tower"
+    )
+    vram_spec = (
+        f"Shared Unified Pool ({sim_input.ram_gb} GB)"
+        if gpu.is_unified_memory
+        else f"{gpu.vram_gb:.0f} GB ({gpu.bandwidth_gbps:.0f} GB/s, PCIe {gpu.pcie_lanes})"
+    )
+
+    lines: list[str] = [
+        "# GTA VI Hardware & FPS Simulation Report",
+        "",
+        f"*Generated: {timestamp}*",
+        "",
+        "## 1. System Hardware",
+        "",
+        "| Component | Configuration |",
+        "| :--- | :--- |",
+        f"| **Form Factor** | {form_factor} |",
+        f"| **GPU** | {gpu.name} — {vram_spec} |",
+        f"| **CPU** | {cpu.name} ({cpu.cores_threads}, Sim Score {cpu.gaming_score:.0f}) |",
+        f"| **RAM** | {sim_input.ram_gb} GB {ram_speed.name} |",
+        f"| **Resizable BAR** | {'ON' if sim_input.rebar_enabled else 'OFF'} |",
+        f"| **GPU Overclock** | +{sim_input.gpu_oc_percent}% |",
+        f"| **Storage** | {sim_input.storage_type} |",
+        "",
+        "## 2. Display & Frame Generation",
+        "",
+        "| Option | Setting |",
+        "| :--- | :--- |",
+        f"| **Output Resolution** | {resolution.label} |",
+        f"| **Upscaler** | {upscaler.display_label(gpu.upscaler_brand, gpu.vendor)} ({res.effective_res_factor:.2f}x effective scale) |",
+        f"| **Frame Generation** | {fg_mode.label} |",
+        f"| **DLSS 5 Neural Rendering** | {'On (3D-Guided)' if res.effective_dlss5 else 'Off'} |",
+        "",
+        "## 3. Live Telemetry & Bottleneck Radar",
+        "",
+        "| Metric | Value |",
+        "| :--- | :--- |",
+        f"| **Average Base FPS** | **{res.base_fps:.1f} FPS** (GPU Ceiling {res.raw_gpu_fps:.1f} / CPU Ceiling {res.raw_cpu_fps:.1f}) |",
+        f"| **1% Low FPS (City/Chaos)** | **{res.low_1pct_fps:.1f} FPS** |",
+        f"| **With Frame Generation** | {f'**{res.fg_fps:.1f} FPS** ({fg_mode.label})' if res.effective_fg_id != 'off' else 'Off'} |",
+        f"| **Core Loads** | GPU {res.gpu_load_pct:.0f}% • RT {res.rt_load_pct:.0f}% • CPU {res.cpu_load_pct:.0f}% |",
+    ]
+
+    if res.is_unified_pool:
+        pool_status = (
+            f"+{res.vram_overflow_gb:.1f} GB OVERFLOW"
+            if res.vram_overflow_gb > 0
+            else f"{(res.unified_pool_used_gb / max(1.0, res.unified_pool_total_gb)) * 100:.0f}%"
+        )
+        lines.append(
+            f"| **Unified Memory Pool** | {res.unified_pool_used_gb:.1f} / {res.unified_pool_total_gb:.0f} GB ({pool_status}; VRAM share {res.vram_used_gb:.1f} GB) |"
+        )
+    else:
+        vram_status = (
+            f"+{res.vram_overflow_gb:.1f} GB SPILL"
+            if res.vram_overflow_gb > 0
+            else f"{(res.vram_used_gb / max(1.0, res.vram_total_gb)) * 100:.0f}%"
+        )
+        ram_status = (
+            f"+{res.ram_overflow_gb:.1f} GB SWAP"
+            if res.ram_overflow_gb > 0
+            else f"{(res.ram_used_gb / max(1.0, res.ram_total_gb)) * 100:.0f}%"
+        )
+        lines.append(
+            f"| **VRAM Footprint** | {res.vram_used_gb:.1f} / {res.vram_total_gb:.0f} GB ({vram_status}) |"
+        )
+        lines.append(
+            f"| **System RAM Footprint** | {res.ram_used_gb:.1f} / {res.ram_total_gb:.0f} GB ({ram_status}) |"
+        )
+
+    lines.extend(
+        [
+            f"| **Primary Bottleneck** | **{res.primary_bottleneck}** |",
+            "",
+            f"> **Diagnosis:** {res.diagnosis_en}",
+            ">",
+            f"> **Recommendation:** {res.recommendation_en}",
+            "",
+        ]
+    )
+
+    if res.warnings:
+        lines.append("### Active Warnings")
+        lines.append("")
+        for warn in res.warnings:
+            lines.append(f"- **[{warn.severity.upper()}] {warn.title_en}:** {warn.detail_en}")
+        lines.append("")
+
+    lines.extend(
+        [
+            "## 4. Tex2 Graphics Settings",
+            "",
+            "| Category | Setting | Selected | Primary Load |",
+            "| :--- | :--- | :--- | :--- |",
+        ]
+    )
+    for definition in SETTINGS:
+        chosen = sim_input.settings.get(definition.id, definition.default_option)
+        badges = ", ".join(definition.badges)
+        lines.append(
+            f"| {definition.category} | {definition.name} | **{chosen}** | {badges} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 5. Multi-GPU Comparison (Current CPU / RAM / Settings)",
+            "",
+            "| GPU / Console Reference | Base Avg FPS | 1% Low FPS | VRAM Status |",
+            "| :--- | ---: | ---: | :--- |",
+        ]
+    )
+    for entry in comp:
+        marker = "★ " if entry.is_selected else ""
+        vram_note = "OVERFLOW" if entry.has_vram_overflow else "OK"
+        lines.append(
+            f"| {marker}{entry.label} | {entry.base_fps:.1f} | {entry.low_1pct_fps:.1f} | {vram_note} |"
+        )
+
+    lines.append("")
+    return "\n".join(lines)
