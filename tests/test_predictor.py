@@ -217,7 +217,7 @@ def test_auto_optimize_targets_60_fps_smartly() -> None:
 
 
 def test_compare_all_gpus_includes_all_gpus_and_consoles() -> None:
-    """Multi-GPU chart returns 9 GPUs plus PS5 and PS5 Pro with realistic Zen 2 CPU caps."""
+    """Multi-GPU chart returns 10 GPUs plus PS5 and PS5 Pro with realistic Zen 2 CPU caps."""
     sim_input = SimulationInput(
         gpu_id="arc_b580",
         cpu_id="i5_13400f",
@@ -233,11 +233,12 @@ def test_compare_all_gpus_includes_all_gpus_and_consoles() -> None:
         settings=default_settings_map(),
     )
     entries = compare_all_gpus(sim_input)
-    assert len(entries) == 11
+    assert len(entries) == 12
     assert sum(1 for e in entries if e.is_selected) == 1
     assert sum(1 for e in entries if e.is_reference_console) == 2
 
     by_id = {e.gpu_id: e for e in entries}
+    assert "rtx_4050_laptop" in by_id
     assert 30.0 <= by_id["ps5_ref"].base_fps <= 38.0
     assert 34.0 <= by_id["ps5_pro_ref"].base_fps <= 40.0
 
@@ -416,6 +417,52 @@ def test_rtx5090_dlss45_6x_mfg_and_dlss5_neural_rendering_cost() -> None:
     # Non-RTX 50 GPU cannot enable DLSS 5
     non50_base = replace(base_5090, gpu_id="rtx_4060", frame_gen_id="off", resolution_id="1440p")
     assert simulate(replace(non50_base, dlss5_enabled=True)) == simulate(non50_base)
+
+
+def test_calibration_gaming_laptop_13450hx_rtx4050_6gb() -> None:
+    """Gaming Laptop (i5-13450HX + RTX 4050 6GB + 16GB DDR5-4800) hits 6GB VRAM cap on High textures and excels on Series S."""
+    series_s_1080 = SimulationInput(
+        gpu_id="rtx_4050_laptop",
+        cpu_id="i5_13450hx",
+        ram_gb=16,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        resolution_id="1080p",
+        upscaler_id="native",
+        frame_gen_id="off",
+        settings=SETTINGS_PRESET_BY_ID["series_s"].values,
+        is_gaming_laptop=True,
+    )
+    res_s = simulate(series_s_1080)
+    assert res_s.vram_overflow_gb == 0.0
+    assert 48.0 <= res_s.base_fps <= 60.0
+
+    # PS5 settings (High textures) at 1080p DLSS Quality overflow 6GB VRAM, and Auto-Optimize resolves it >= 60 FPS
+    ps5_1080 = replace(
+        series_s_1080,
+        upscaler_id="quality",
+        settings=default_settings_map(),
+    )
+    res_ps5 = simulate(ps5_1080)
+    assert res_ps5.vram_overflow_gb > 1.0
+    assert res_ps5.primary_bottleneck == "VRAM Overflow"
+
+    opt = auto_optimize_for_60_fps(ps5_1080, target_fps=60.0)
+    assert opt.reached_target is True
+    assert opt.resulting_base_fps >= 60.0
+
+    # FG caps at 2x and DLSS 5 stays locked off; Markdown export displays Gaming Laptop
+    res_fg4 = simulate(replace(series_s_1080, frame_gen_id="4x", dlss5_enabled=True))
+    assert res_fg4.effective_fg_id == "2x"
+    assert res_fg4.effective_dlss5 is False
+
+    md = export_simulation_markdown(series_s_1080)
+    assert "Gaming Laptop (Dedicated TGP)" in md
+    assert "Laptop: RTX 4050 (6GB)" in md
+    assert "Laptop: Core i5-13450HX" in md
 
 
 def test_export_simulation_markdown_contains_all_sections() -> None:

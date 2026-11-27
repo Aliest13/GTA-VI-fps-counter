@@ -1,6 +1,6 @@
 # GTA VI Hardware & FPS Simulation Report
 
-*Generated: 2026-11-27 13:30 Iran Standard Time*
+*Generated: 2026-11-27 14:43 Iran Standard Time*
 
 ## 1. System Hardware
 
@@ -72,4 +72,5 @@
 | RTX 4060 8G | 59.7 | 39.7 | OVERFLOW |
 | PS5 Pro (Ref) | 39.3 | 30.5 | OK |
 | PS5 (Ref) | 35.8 | 27.8 | OK |
+| RTX 4050 (LP) | 22.1 | 3.8 | OVERFLOW |
 | Arc 140V (LP) | 14.3 | 5.3 | OVERFLOW |

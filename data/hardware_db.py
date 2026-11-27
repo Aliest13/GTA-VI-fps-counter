@@ -9,6 +9,7 @@ VendorType = Literal["NVIDIA", "AMD", "Intel", "Console"]
 PCIeType = Literal["x16", "x8", "Unified"]
 DDRGenType = Literal["DDR4", "DDR5", "LPDDR5X"]
 StorageType = Literal["NVMe Gen4", "SATA / HDD"]
+FormFactorType = Literal["desktop", "gaming_laptop", "laptop"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +79,7 @@ class HardwarePreset:
     gpu_oc_percent: int
     storage_type: StorageType
     is_laptop_mode: bool
+    form_factor: FormFactorType = "desktop"
 
 
 GPUS: tuple[GPUProfile, ...] = (
@@ -236,6 +238,25 @@ GPUS: tuple[GPUProfile, ...] = (
         max_fg_factor=2,
     ),
     GPUProfile(
+        id="rtx_4050_laptop",
+        name="Laptop: RTX 4050 (6GB)",
+        short_name="RTX 4050 (LP)",
+        vendor="NVIDIA",
+        vram_gb=6.0,
+        bandwidth_gbps=192.0,
+        raster_score=86.0,
+        rt_score=92.0,
+        pcie_lanes="x8",
+        driver_cpu_overhead=0.02,
+        driver_cpu_overhead_no_rebar=0.05,
+        upscaler_brand="DLSS",
+        fg_label="DLSS 3/4 FG (2x)",
+        supports_fg=True,
+        supports_mfg=False,
+        notes="95-115W gaming laptop (AD107); 6GB VRAM (96-bit, 192 GB/s) spills on High+ textures",
+        max_fg_factor=2,
+    ),
+    GPUProfile(
         id="arc_140v",
         name="Laptop: Arc 140V (Lunar Lake iGPU)",
         short_name="Arc 140V (LP)",
@@ -353,6 +374,14 @@ CPUS: tuple[CPUProfile, ...] = (
         socket_hint="LGA1700",
     ),
     CPUProfile(
+        id="i5_13450hx",
+        name="Laptop: Core i5-13450HX",
+        gaming_score=72.0,
+        cores_threads="10C (6P+4E) / 16T",
+        architecture_notes="Raptor Lake-HX (55W+ gaming chassis); DDR5-4800 max",
+        socket_hint="Mobile-HX",
+    ),
+    CPUProfile(
         id="ryzen_5600x",
         name="Ryzen 5 5600X",
         gaming_score=65.0,
@@ -392,7 +421,7 @@ RAM_SPEEDS: tuple[RAMSpeedProfile, ...] = (
     ),
     RAMSpeedProfile(
         id="ddr5_4800",
-        name="DDR5-4800 (H610 Cap)",
+        name="DDR5-4800 (H610 / Mobile HX)",
         ddr_gen="DDR5",
         cpu_multiplier=0.91,
         low_1pct_multiplier=0.87,
@@ -438,6 +467,20 @@ HARDWARE_PRESETS: tuple[HardwarePreset, ...] = (
         gpu_oc_percent=0,
         storage_type="NVMe Gen4",
         is_laptop_mode=False,
+        form_factor="desktop",
+    ),
+    HardwarePreset(
+        id="gaming_laptop_4050",
+        label="Gaming Laptop (13450HX + RTX 4050 6G)",
+        gpu_id="rtx_4050_laptop",
+        cpu_id="i5_13450hx",
+        ram_gb=16,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        form_factor="gaming_laptop",
     ),
     HardwarePreset(
         id="ultrabook_igpu",
@@ -450,6 +493,7 @@ HARDWARE_PRESETS: tuple[HardwarePreset, ...] = (
         gpu_oc_percent=0,
         storage_type="NVMe Gen4",
         is_laptop_mode=True,
+        form_factor="laptop",
     ),
     HardwarePreset(
         id="high_end",
@@ -462,6 +506,7 @@ HARDWARE_PRESETS: tuple[HardwarePreset, ...] = (
         gpu_oc_percent=0,
         storage_type="NVMe Gen4",
         is_laptop_mode=False,
+        form_factor="desktop",
     ),
 )
 
@@ -486,6 +531,11 @@ def get_platform_compatibility_notes(
         notes.append("Hint: AM4 CPUs use DDR4 memory on real motherboards.")
     elif cpu.socket_hint == "LGA1700" and ram_speed.ddr_gen == "LPDDR5X":
         notes.append("Hint: LPDDR5X is soldered mobile memory (Lunar Lake).")
+    elif cpu.socket_hint == "Mobile-HX":
+        if ram_speed.ddr_gen == "LPDDR5X":
+            notes.append("Hint: Core i5-13450HX gaming laptops use SO-DIMM DDR5-4800 or DDR4-3200, not LPDDR5X.")
+        elif ram_speed.id in ("ddr5_6000", "ddr5_5600"):
+            notes.append("Hint: Core i5-13450HX officially caps DDR5 speed at DDR5-4800.")
 
     if is_laptop_mode and (not gpu.is_laptop_thermal or not cpu.is_laptop_thermal):
         notes.append("Laptop thermal throttling (20-25W TDP) is active in Laptop Mode.")

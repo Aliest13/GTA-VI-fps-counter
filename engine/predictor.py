@@ -55,6 +55,7 @@ class SimulationInput:
     frame_gen_id: str
     settings: dict[str, str]
     dlss5_enabled: bool = False
+    is_gaming_laptop: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -748,7 +749,7 @@ def _build_diagnosis(
 
 
 def compare_all_gpus(sim_input: SimulationInput) -> list[GPUComparisonEntry]:
-    """Compute Base FPS and 1% Low across all 9 GPUs + PS5 / PS5 Pro console references."""
+    """Compute Base FPS and 1% Low across all 10 GPUs + PS5 / PS5 Pro console references."""
     entries: list[GPUComparisonEntry] = []
 
     for gpu in GPUS:
@@ -906,6 +907,7 @@ def auto_optimize_for_60_fps(sim_input: SimulationInput, target_fps: float = 60.
                 frame_gen_id=sim_input.frame_gen_id,
                 settings=working_settings,
                 dlss5_enabled=sim_input.dlss5_enabled,
+                is_gaming_laptop=sim_input.is_gaming_laptop,
             )
         )
 
@@ -1028,9 +1030,12 @@ def export_simulation_markdown(
     fg_mode = FRAME_GEN_BY_ID.get(res.effective_fg_id, FRAME_GEN_BY_ID["off"])
 
     timestamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
-    form_factor = (
-        "Laptop (20-25W Coupled TDP)" if sim_input.is_laptop_mode else "Desktop Tower"
-    )
+    if sim_input.is_laptop_mode:
+        form_factor = "Laptop (20-25W Coupled TDP)"
+    elif sim_input.is_gaming_laptop or gpu.id == "rtx_4050_laptop" or cpu.id == "i5_13450hx":
+        form_factor = "Gaming Laptop (Dedicated TGP)"
+    else:
+        form_factor = "Desktop Tower"
     vram_spec = (
         f"Shared Unified Pool ({sim_input.ram_gb} GB)"
         if gpu.is_unified_memory

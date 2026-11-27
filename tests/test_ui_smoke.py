@@ -114,6 +114,18 @@ def test_main_window_presets_and_live_updates(qapp: QApplication) -> None:
     qapp.processEvents()
     assert float(window._hero_card._avg_value.text()) <= 44.0
 
+    # Select Gaming Laptop preset (13450HX + RTX 4050 6GB) -> Gaming Laptop pill active, max 2x FG, DLSS 5 locked
+    window._apply_hardware_preset("gaming_laptop_4050")
+    qapp.processEvents()
+    assert window._laptop_pills.current_id() == "gaming_laptop"
+    assert window._fg_pills._buttons["2x"].isEnabled() is True
+    assert window._fg_pills._buttons["3x"].isEnabled() is False
+    assert window._fg_pills._buttons["4x"].isEnabled() is False
+    assert window._fg_pills._buttons["6x"].isEnabled() is False
+    assert window._dlss5_pills._buttons["on"].isEnabled() is False
+    assert "6 GB VRAM" in window._gpu_spec_chip.text()
+    assert "192 GB/s" in window._gpu_spec_chip.text()
+
     # Mainstream Desktop + All Ultra (<60 FPS) + Auto-Optimize -> reaches >= 60 Base FPS and enables Undo
     window._apply_hardware_preset("mid_range_desktop")
     window._res_pills.set_selected("1440p")

@@ -1,6 +1,6 @@
 # GTA VI Hardware & FPS Simulation Report
 
-*Generated: 2026-11-27 13:30 Iran Standard Time*
+*Generated: 2026-11-27 14:43 Iran Standard Time*
 
 ## 1. System Hardware
 
@@ -9,7 +9,7 @@
 | **Form Factor** | Desktop Tower |
 | **GPU** | RTX 4060 (8GB) — 8 GB (272 GB/s, PCIe x8) |
 | **CPU** | Core i5-13400F (10C (6P+4E) / 16T, Sim Score 73) |
-| **RAM** | 32 GB DDR5-4800 (H610 Cap) |
+| **RAM** | 32 GB DDR5-4800 (H610 / Mobile HX) |
 | **Resizable BAR** | ON |
 | **GPU Overclock** | +3% |
 | **Storage** | NVMe Gen4 |
@@ -77,4 +77,5 @@
 | 9060 XT 8G | 20.4 | 3.5 | OVERFLOW |
 | PS5 (Ref) | 18.8 | 1.2 | OVERFLOW |
 | ★ RTX 4060 8G | 16.1 | 2.8 | OVERFLOW |
+| RTX 4050 (LP) | 11.9 | 2.1 | OVERFLOW |
 | Arc 140V (LP) | 7.0 | 1.8 | OVERFLOW |

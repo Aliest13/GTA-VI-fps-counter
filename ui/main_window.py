@@ -257,9 +257,13 @@ class MainWindow(QMainWindow):
         # Core Components Card
         hw_card = GlassCard("SYSTEM HARDWARE")
 
-        # Laptop Thermal/Unified Mode toggle
+        # Form Factor / Thermal Envelope toggle
         self._laptop_pills = SegmentedPills(
-            [("desktop", "Desktop Tower"), ("laptop", "Laptop (20-25W)")],
+            [
+                ("desktop", "Desktop Tower"),
+                ("gaming_laptop", "Gaming Laptop"),
+                ("laptop", "Ultrabook (20-25W)"),
+            ],
             selected_id="desktop",
         )
         self._laptop_pills.changed.connect(self._on_hardware_changed)
@@ -607,7 +611,7 @@ class MainWindow(QMainWindow):
             self._oc_slider.setValue(preset.gpu_oc_percent)
             self._oc_val_label.setText(f"+{preset.gpu_oc_percent}%")
             self._storage_pills.set_selected(preset.storage_type)
-            self._laptop_pills.set_selected("laptop" if preset.is_laptop_mode else "desktop")
+            self._laptop_pills.set_selected(preset.form_factor)
             self._sync_gpu_tech_labels()
             self._highlight_hw_preset(preset_id)
         finally:
@@ -759,6 +763,7 @@ class MainWindow(QMainWindow):
     def _collect_input(self) -> SimulationInput:
         storage_str = self._storage_pills.current_id()
         storage: StorageType = "SATA / HDD" if storage_str == "SATA / HDD" else "NVMe Gen4"
+        form_factor = self._laptop_pills.current_id()
         return SimulationInput(
             gpu_id=self._gpu_combo.currentData(),
             cpu_id=self._cpu_combo.currentData(),
@@ -767,12 +772,13 @@ class MainWindow(QMainWindow):
             rebar_enabled=(self._rebar_pills.current_id() == "on"),
             gpu_oc_percent=int(self._oc_slider.value()),
             storage_type=storage,
-            is_laptop_mode=(self._laptop_pills.current_id() == "laptop"),
+            is_laptop_mode=(form_factor == "laptop"),
             resolution_id=self._res_pills.current_id(),
             upscaler_id=self._upscaler_pills.current_id(),
             frame_gen_id=self._fg_pills.current_id(),
             settings=dict(self._settings_state),
             dlss5_enabled=(self._dlss5_pills.current_id() == "on"),
+            is_gaming_laptop=(form_factor == "gaming_laptop"),
         )
 
     def _recalculate(self) -> None:
