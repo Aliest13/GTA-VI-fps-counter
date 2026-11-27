@@ -194,13 +194,14 @@ def simulate(
     upscaler = UPSCALER_BY_ID[sim_input.upscaler_id]
 
     eff_fg_id, fg_mult, _fg_overhead, fg_note = _resolve_fg(gpu, sim_input.frame_gen_id)
-    effective_res_factor = res.base_res_factor * upscaler.render_multiplier
+    # Fixed RT & shader overhead prevents sub-540p internal scales from scaling linearly.
+    effective_res_factor = max(0.26, res.base_res_factor * upscaler.render_multiplier)
 
     raw_raster, raw_rt, raw_cpu, delta_vram_mb, delta_ram_mb = _accumulate_costs(sim_input.settings)
 
     damped_raster = _damp_cost_above_baseline(raw_raster, slope=0.32)
     damped_rt = _damp_cost_above_baseline(raw_rt, slope=0.32)
-    damped_cpu = _damp_cost_above_baseline(raw_cpu, slope=0.32)
+    damped_cpu = _damp_cost_above_baseline(raw_cpu, slope=0.32, floor=0.70)
 
     if cpu.has_3d_vcache and damped_cpu > 1.0:
         # 96MB 3D V-Cache mitigates Ultra BVH/AI cache thrashing.

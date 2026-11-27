@@ -1,2 +1,23 @@
-update_all_files.py
-all_files.txt
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE / OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

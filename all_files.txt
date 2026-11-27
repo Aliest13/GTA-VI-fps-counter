@@ -1,0 +1,4639 @@
+================================================================================
+  Generated from: C:\projects\github\gta vi machine
+  Total Files Included: 17
+================================================================================
+
+================================================================================
+FILE: .gitattributes
+================================================================================
+# Auto detect text files and perform LF normalization
+* text=auto
+
+
+================================================================================
+FILE: README.md
+================================================================================
+# GTA VI Hardware & FPS Simulator
+
+Glassmorphic `PySide6` desktop dashboard estimating real-time GTA VI **Average FPS**, **1% Lows**, **Frame Generation output**, **VRAM / System RAM / Unified Pool usage**, and **CPU vs GPU/RT bottlenecks** based on the leaked Tex2 console settings table and 2025/2026 PC hardware profiles.
+
+## Features
+
+- **Live Telemetry (Zero "Calculate" Button):** Every hardware change, toggle, display tweak, or graphics setting updates all gauges, warnings, and multi-GPU charts instantaneously.
+- **System Hardware Configurator:**
+  - 9 PC GPUs (`RTX 5090` down to `Laptop Arc 140V`) + `PS5` and `PS5 Pro` reference baselines
+  - 8 CPUs (`Ryzen 7 9800X3D`, `i5-13400F`, `Core Ultra 7 256V`, etc.)
+  - RAM capacity (`16/32/64 GB`), RAM speed profiles (`DDR4-3200` to `DDR5-6000 CL30` & `LPDDR5X-8533`), `Resizable BAR`, `GPU OC (+0% to +7%)`, `NVMe Gen4 vs SATA/HDD`, and `Laptop 20–25W Thermal Coupling`
+  - Quick hardware presets (`My Desktop (13400F + B580 + 4800)`, `My Laptop (TP3407SA 256V)`, `High-End (9800X3D + 5090)`)
+- **Tex2 Graphics Matrix & Presets:** `Series S`, `PS5 / Series X`, `PS5 Pro`, `900p Sweet Spot`, and `All Ultra` across all 6 categories (`Lighting & RT`, `Textures & World`, `Water`, `Volumetrics & Particles`, `Hair`, `Population / AI / Physics`) with `CPU`/`GPU`/`RT`/`VRAM`/`RAM` impact badges and optional `EN / فارسی` diagnosis & tooltip toggle.
+- **Auto-Optimize for 60 FPS + Undo:** Intelligently reduces only the settings causing the active bottleneck (with one-click Undo).
+- **Live Multi-GPU Comparison Chart:** Compares Base FPS of all GPUs plus PS5 / PS5 Pro references with 30 FPS & 60 FPS marker lines.
+
+## Quick Start
+
+```powershell
+# Using the pre-created virtual environment:
+.venv\Scripts\python.exe main.py
+
+# Or standard installation:
+pip install -r requirements.txt
+python main.py
+```
+
+## Run Tests
+
+```powershell
+.venv\Scripts\python.exe -m pytest -v
+```
+
+
+================================================================================
+FILE: data/__init__.py
+================================================================================
+"""Hardware and GTA VI settings databases."""
+
+
+================================================================================
+FILE: data/hardware_db.py
+================================================================================
+"""Hardware profiles database for the GTA VI Hardware & FPS Simulator."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+VendorType = Literal["NVIDIA", "AMD", "Intel", "Console"]
+PCIeType = Literal["x16", "x8", "Unified"]
+DDRGenType = Literal["DDR4", "DDR5", "LPDDR5X"]
+StorageType = Literal["NVMe Gen4", "SATA / HDD"]
+
+
+@dataclass(frozen=True, slots=True)
+class GPUProfile:
+    """Represents a GPU's raster, ray tracing, memory, and driver characteristics."""
+
+    id: str
+    name: str
+    short_name: str
+    vendor: VendorType
+    vram_gb: float
+    bandwidth_gbps: float
+    raster_score: float
+    rt_score: float
+    pcie_lanes: PCIeType
+    driver_cpu_overhead: float
+    driver_cpu_overhead_no_rebar: float
+    upscaler_brand: str
+    fg_label: str
+    supports_fg: bool
+    supports_mfg: bool
+    notes: str
+    is_unified_memory: bool = False
+    is_laptop_thermal: bool = False
+    is_reference_console: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class CPUProfile:
+    """Represents a CPU's simulation/gaming capability and platform attributes."""
+
+    id: str
+    name: str
+    gaming_score: float
+    cores_threads: str
+    architecture_notes: str
+    socket_hint: str
+    has_3d_vcache: bool = False
+    is_laptop_thermal: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class RAMSpeedProfile:
+    """Represents a memory speed/latency profile and its CPU/1%-low multipliers."""
+
+    id: str
+    name: str
+    ddr_gen: DDRGenType
+    cpu_multiplier: float
+    low_1pct_multiplier: float
+    notes: str
+
+
+@dataclass(frozen=True, slots=True)
+class HardwarePreset:
+    """Quick hardware configuration preset."""
+
+    id: str
+    label: str
+    gpu_id: str
+    cpu_id: str
+    ram_gb: int
+    ram_speed_id: str
+    rebar_enabled: bool
+    gpu_oc_percent: int
+    storage_type: StorageType
+    is_laptop_mode: bool
+
+
+GPUS: tuple[GPUProfile, ...] = (
+    GPUProfile(
+        id="rtx_5090",
+        name="RTX 5090",
+        short_name="RTX 5090",
+        vendor="NVIDIA",
+        vram_gb=32.0,
+        bandwidth_gbps=1792.0,
+        raster_score=405.0,
+        rt_score=485.0,
+        pcie_lanes="x16",
+        driver_cpu_overhead=0.02,
+        driver_cpu_overhead_no_rebar=0.04,
+        upscaler_brand="DLSS",
+        fg_label="DLSS 4 + MFG (4x)",
+        supports_fg=True,
+        supports_mfg=True,
+        notes="Flagship Blackwell",
+    ),
+    GPUProfile(
+        id="rtx_5070_ti",
+        name="RTX 5070 Ti",
+        short_name="RTX 5070 Ti",
+        vendor="NVIDIA",
+        vram_gb=16.0,
+        bandwidth_gbps=896.0,
+        raster_score=262.0,
+        rt_score=295.0,
+        pcie_lanes="x16",
+        driver_cpu_overhead=0.02,
+        driver_cpu_overhead_no_rebar=0.04,
+        upscaler_brand="DLSS",
+        fg_label="DLSS 4 + MFG (4x)",
+        supports_fg=True,
+        supports_mfg=True,
+        notes="Strong RT & DLSS",
+    ),
+    GPUProfile(
+        id="rx_9070_xt",
+        name="RX 9070 XT",
+        short_name="RX 9070 XT",
+        vendor="AMD",
+        vram_gb=16.0,
+        bandwidth_gbps=640.0,
+        raster_score=265.0,
+        rt_score=245.0,
+        pcie_lanes="x16",
+        driver_cpu_overhead=0.01,
+        driver_cpu_overhead_no_rebar=0.04,
+        upscaler_brand="FSR",
+        fg_label="FSR 4 + FG (2x)",
+        supports_fg=True,
+        supports_mfg=False,
+        notes="Strong RDNA 4 raster & improved RT",
+    ),
+    GPUProfile(
+        id="rx_6900_xt",
+        name="RX 6900 XT",
+        short_name="RX 6900 XT",
+        vendor="AMD",
+        vram_gb=16.0,
+        bandwidth_gbps=512.0,
+        raster_score=205.0,
+        rt_score=128.0,
+        pcie_lanes="x16",
+        driver_cpu_overhead=0.01,
+        driver_cpu_overhead_no_rebar=0.04,
+        upscaler_brand="FSR",
+        fg_label="FSR 3 FG (2x)",
+        supports_fg=True,
+        supports_mfg=False,
+        notes="High raster, weak RDNA 2 RT!",
+    ),
+    GPUProfile(
+        id="rx_9060_xt_16",
+        name="RX 9060 XT (16GB)",
+        short_name="9060 XT 16G",
+        vendor="AMD",
+        vram_gb=16.0,
+        bandwidth_gbps=320.0,
+        raster_score=153.0,
+        rt_score=150.0,
+        pcie_lanes="x16",
+        driver_cpu_overhead=0.01,
+        driver_cpu_overhead_no_rebar=0.04,
+        upscaler_brand="FSR",
+        fg_label="FSR 4 + FG (2x)",
+        supports_fg=True,
+        supports_mfg=False,
+        notes="Safe VRAM headroom",
+    ),
+    GPUProfile(
+        id="rx_9060_xt_8",
+        name="RX 9060 XT (8GB)",
+        short_name="9060 XT 8G",
+        vendor="AMD",
+        vram_gb=8.0,
+        bandwidth_gbps=320.0,
+        raster_score=153.0,
+        rt_score=150.0,
+        pcie_lanes="x16",
+        driver_cpu_overhead=0.01,
+        driver_cpu_overhead_no_rebar=0.04,
+        upscaler_brand="FSR",
+        fg_label="FSR 4 + FG (2x)",
+        supports_fg=True,
+        supports_mfg=False,
+        notes="Vulnerable to 8GB VRAM overflow",
+    ),
+    GPUProfile(
+        id="arc_b580",
+        name="Intel Arc B580",
+        short_name="Arc B580",
+        vendor="Intel",
+        vram_gb=12.0,
+        bandwidth_gbps=456.0,
+        raster_score=135.0,
+        rt_score=140.0,
+        pcie_lanes="x8",
+        driver_cpu_overhead=0.07,
+        driver_cpu_overhead_no_rebar=0.28,
+        upscaler_brand="XeSS",
+        fg_label="XeSS + XeSS FG (2x)",
+        supports_fg=True,
+        supports_mfg=False,
+        notes="Sensitive to ReBAR & VRAM spillover over x8",
+    ),
+    GPUProfile(
+        id="rtx_4060",
+        name="RTX 4060 (8GB)",
+        short_name="RTX 4060 8G",
+        vendor="NVIDIA",
+        vram_gb=8.0,
+        bandwidth_gbps=272.0,
+        raster_score=115.0,
+        rt_score=125.0,
+        pcie_lanes="x8",
+        driver_cpu_overhead=0.02,
+        driver_cpu_overhead_no_rebar=0.05,
+        upscaler_brand="DLSS",
+        fg_label="DLSS 3/4 FG (2x)",
+        supports_fg=True,
+        supports_mfg=False,
+        notes="8GB VRAM limit hits hard in GTA VI",
+    ),
+    GPUProfile(
+        id="arc_140v",
+        name="Laptop: Arc 140V (Vivobook 14 Flip)",
+        short_name="Arc 140V (LP)",
+        vendor="Intel",
+        vram_gb=16.0,
+        bandwidth_gbps=136.0,
+        raster_score=34.0,
+        rt_score=30.0,
+        pcie_lanes="Unified",
+        driver_cpu_overhead=0.06,
+        driver_cpu_overhead_no_rebar=0.14,
+        upscaler_brand="XeSS",
+        fg_label="XeSS FG (2x)",
+        supports_fg=True,
+        supports_mfg=False,
+        notes="Coupled 17-25W thermal budget + shared 16GB RAM/VRAM pool",
+        is_unified_memory=True,
+        is_laptop_thermal=True,
+    ),
+)
+
+CONSOLE_REFERENCES: tuple[GPUProfile, ...] = (
+    GPUProfile(
+        id="ps5_ref",
+        name="PS5 Reference",
+        short_name="PS5 (Ref)",
+        vendor="Console",
+        vram_gb=12.5,
+        bandwidth_gbps=448.0,
+        raster_score=100.0,
+        rt_score=75.0,
+        pcie_lanes="Unified",
+        driver_cpu_overhead=0.00,
+        driver_cpu_overhead_no_rebar=0.00,
+        upscaler_brand="FSR",
+        fg_label="Console Fixed",
+        supports_fg=False,
+        supports_mfg=False,
+        notes="Base PS5 GPU target reference (Score 100/75, 12.5GB pool)",
+        is_reference_console=True,
+    ),
+    GPUProfile(
+        id="ps5_pro_ref",
+        name="PS5 Pro Reference",
+        short_name="PS5 Pro (Ref)",
+        vendor="Console",
+        vram_gb=14.0,
+        bandwidth_gbps=576.0,
+        raster_score=180.0,
+        rt_score=175.0,
+        pcie_lanes="Unified",
+        driver_cpu_overhead=0.00,
+        driver_cpu_overhead_no_rebar=0.00,
+        upscaler_brand="PSSR",
+        fg_label="Console Fixed",
+        supports_fg=False,
+        supports_mfg=False,
+        notes="PS5 Pro GPU target reference (Score 180/175, 14GB pool)",
+        is_reference_console=True,
+    ),
+)
+
+CPUS: tuple[CPUProfile, ...] = (
+    CPUProfile(
+        id="ryzen_9800x3d",
+        name="Ryzen 7 9800X3D",
+        gaming_score=112.0,
+        cores_threads="8C / 16T",
+        architecture_notes="96MB 3D V-Cache; excels in GTA VI AI & BVH",
+        socket_hint="AM5",
+        has_3d_vcache=True,
+    ),
+    CPUProfile(
+        id="ryzen_7800x3d",
+        name="Ryzen 7 7800X3D",
+        gaming_score=100.0,
+        cores_threads="8C / 16T",
+        architecture_notes="96MB 3D V-Cache baseline",
+        socket_hint="AM5",
+        has_3d_vcache=True,
+    ),
+    CPUProfile(
+        id="i5_14600k",
+        name="Core i5-14600K",
+        gaming_score=87.0,
+        cores_threads="14C (6P+8E) / 20T",
+        architecture_notes="Best LGA1700 gaming upgrade",
+        socket_hint="LGA1700",
+    ),
+    CPUProfile(
+        id="i7_12700k",
+        name="Core i7-12700K",
+        gaming_score=82.0,
+        cores_threads="12C (8P+4E) / 20T",
+        architecture_notes="Strong clocks & P-core count",
+        socket_hint="LGA1700",
+    ),
+    CPUProfile(
+        id="ryzen_7600x",
+        name="Ryzen 5 7600X",
+        gaming_score=80.0,
+        cores_threads="6C / 12T",
+        architecture_notes="Mainstream AM5",
+        socket_hint="AM5",
+    ),
+    CPUProfile(
+        id="i5_13400f",
+        name="Core i5-13400F",
+        gaming_score=73.0,
+        cores_threads="10C (6P+4E) / 16T",
+        architecture_notes="DDR5-4800 capped on H610 boards",
+        socket_hint="LGA1700",
+    ),
+    CPUProfile(
+        id="ryzen_5600x",
+        name="Ryzen 5 5600X",
+        gaming_score=65.0,
+        cores_threads="6C / 12T",
+        architecture_notes="Zen 3 AM4",
+        socket_hint="AM4",
+    ),
+    CPUProfile(
+        id="ultra_7_256v",
+        name="Laptop: Core Ultra 7 256V",
+        gaming_score=48.0,
+        cores_threads="8C (4P+4LP-E) / 8T",
+        architecture_notes="No HT; shares 17-25W TDP with Arc 140V",
+        socket_hint="Mobile",
+        is_laptop_thermal=True,
+    ),
+)
+
+RAM_CAPACITIES_GB: tuple[int, ...] = (16, 32, 64)
+
+RAM_SPEEDS: tuple[RAMSpeedProfile, ...] = (
+    RAMSpeedProfile(
+        id="ddr5_6000",
+        name="DDR5-6000 CL30",
+        ddr_gen="DDR5",
+        cpu_multiplier=1.02,
+        low_1pct_multiplier=1.02,
+        notes="Optimal desktop DDR5 bandwidth & latency",
+    ),
+    RAMSpeedProfile(
+        id="ddr5_5600",
+        name="DDR5-5600",
+        ddr_gen="DDR5",
+        cpu_multiplier=0.97,
+        low_1pct_multiplier=0.96,
+        notes="Solid mid-range DDR5 kit",
+    ),
+    RAMSpeedProfile(
+        id="ddr5_4800",
+        name="DDR5-4800 (H610 Cap)",
+        ddr_gen="DDR5",
+        cpu_multiplier=0.91,
+        low_1pct_multiplier=0.87,
+        notes="Higher latency reduces city 1% Lows",
+    ),
+    RAMSpeedProfile(
+        id="ddr4_3600",
+        name="DDR4-3600",
+        ddr_gen="DDR4",
+        cpu_multiplier=0.96,
+        low_1pct_multiplier=0.95,
+        notes="Sweet-spot DDR4 timing",
+    ),
+    RAMSpeedProfile(
+        id="ddr4_3200",
+        name="DDR4-3200",
+        ddr_gen="DDR4",
+        cpu_multiplier=0.91,
+        low_1pct_multiplier=0.89,
+        notes="Entry DDR4 kit",
+    ),
+    RAMSpeedProfile(
+        id="lpddr5x_8533",
+        name="LPDDR5X-8533 (Laptop Shared)",
+        ddr_gen="LPDDR5X",
+        cpu_multiplier=0.88,
+        low_1pct_multiplier=0.85,
+        notes="Shared CPU/GPU contention on 136 GB/s bus",
+    ),
+)
+
+STORAGE_OPTIONS: tuple[StorageType, ...] = ("NVMe Gen4", "SATA / HDD")
+
+HARDWARE_PRESETS: tuple[HardwarePreset, ...] = (
+    HardwarePreset(
+        id="my_desktop",
+        label="My Desktop (13400F + B580 + 4800)",
+        gpu_id="arc_b580",
+        cpu_id="i5_13400f",
+        ram_gb=32,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+    ),
+    HardwarePreset(
+        id="my_laptop",
+        label="My Laptop (TP3407SA 256V)",
+        gpu_id="arc_140v",
+        cpu_id="ultra_7_256v",
+        ram_gb=16,
+        ram_speed_id="lpddr5x_8533",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=True,
+    ),
+    HardwarePreset(
+        id="high_end",
+        label="High-End (9800X3D + 5090)",
+        gpu_id="rtx_5090",
+        cpu_id="ryzen_9800x3d",
+        ram_gb=32,
+        ram_speed_id="ddr5_6000",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+    ),
+)
+
+GPU_BY_ID: dict[str, GPUProfile] = {g.id: g for g in GPUS}
+CONSOLE_BY_ID: dict[str, GPUProfile] = {c.id: c for c in CONSOLE_REFERENCES}
+CPU_BY_ID: dict[str, CPUProfile] = {c.id: c for c in CPUS}
+RAM_SPEED_BY_ID: dict[str, RAMSpeedProfile] = {r.id: r for r in RAM_SPEEDS}
+PRESET_BY_ID: dict[str, HardwarePreset] = {p.id: p for p in HARDWARE_PRESETS}
+
+
+def get_platform_compatibility_notes(
+    gpu: GPUProfile,
+    cpu: CPUProfile,
+    ram_speed: RAMSpeedProfile,
+    is_laptop_mode: bool,
+) -> list[str]:
+    """Return informational (non-blocking) hardware pairing hints."""
+    notes: list[str] = []
+    if cpu.socket_hint == "AM5" and ram_speed.ddr_gen == "DDR4":
+        notes.append("Hint: AM5 CPUs require DDR5 memory on real motherboards.")
+    elif cpu.socket_hint == "AM4" and ram_speed.ddr_gen != "DDR4":
+        notes.append("Hint: AM4 CPUs use DDR4 memory on real motherboards.")
+    elif cpu.socket_hint == "LGA1700" and ram_speed.ddr_gen == "LPDDR5X":
+        notes.append("Hint: LPDDR5X is soldered mobile memory (Lunar Lake).")
+
+    if is_laptop_mode and (not gpu.is_laptop_thermal or not cpu.is_laptop_thermal):
+        notes.append("Laptop thermal throttling (20-25W TDP) is active in Laptop Mode.")
+    if gpu.is_unified_memory and ram_speed.ddr_gen != "LPDDR5X":
+        notes.append("Hint: Arc 140V relies on on-package LPDDR5X-8533 unified RAM.")
+    return notes
+
+
+================================================================================
+FILE: data/settings_db.py
+================================================================================
+"""GTA VI leaked Tex2 console settings, cost weights, and quick presets."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+BadgeType = Literal["CPU", "GPU", "RT", "VRAM", "RAM"]
+
+
+@dataclass(frozen=True, slots=True)
+class ResolutionProfile:
+    """Output display resolution scaling factor and framebuffer VRAM delta."""
+
+    id: str
+    label: str
+    base_res_factor: float
+    vram_delta_gb: float
+
+
+@dataclass(frozen=True, slots=True)
+class UpscalerProfile:
+    """Internal render resolution multiplier for native or spatial/temporal upscalers."""
+
+    id: str
+    generic_label: str
+    render_multiplier: float
+    description_en: str
+    description_fa: str
+
+    def display_label(self, brand: str) -> str:
+        """Return vendor-specific pill label (DLSS / FSR / XeSS)."""
+        if self.id == "native":
+            return "Native"
+        if self.id == "native_aa":
+            aa_name = "DLAA" if brand == "DLSS" else f"{brand} AA"
+            return f"Native AA ({aa_name})"
+        return f"{brand} {self.generic_label}"
+
+
+@dataclass(frozen=True, slots=True)
+class FrameGenProfile:
+    """Frame generation mode multiplier and compatibility constraint."""
+
+    id: str
+    label: str
+    fps_multiplier: float
+    base_overhead: float
+    requires_fg: bool
+    requires_mfg: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SettingOption:
+    """Single quality tier for a graphics setting with deltas relative to PS5 baseline."""
+
+    label: str
+    raster_cost: float = 0.0
+    rt_cost: float = 0.0
+    cpu_cost: float = 0.0
+    vram_mb: float = 0.0
+    ram_mb: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class SettingDefinition:
+    """Metadata and options for a categorized GTA VI graphics setting."""
+
+    id: str
+    name: str
+    category: str
+    badges: tuple[BadgeType, ...]
+    options: tuple[SettingOption, ...]
+    default_option: str
+    tex2_subsettings: str
+    tooltip_en: str
+    tooltip_fa: str
+
+    def option_labels(self) -> list[str]:
+        return [opt.label for opt in self.options]
+
+    def get_option(self, label: str) -> SettingOption:
+        for opt in self.options:
+            if opt.label == label:
+                return opt
+        return self.get_option_default()
+
+    def get_option_default(self) -> SettingOption:
+        for opt in self.options:
+            if opt.label == self.default_option:
+                return opt
+        return self.options[0]
+
+
+@dataclass(frozen=True, slots=True)
+class SettingsPreset:
+    """Named graphics preset with optional display resolution/upscaler overrides."""
+
+    id: str
+    label: str
+    values: dict[str, str]
+    resolution_id: str | None = None
+    upscaler_id: str | None = None
+    description_en: str = ""
+    description_fa: str = ""
+
+
+SETTING_CATEGORIES: tuple[str, ...] = (
+    "Lighting & RT",
+    "Textures & World",
+    "Water",
+    "Volumetrics & Particles",
+    "Hair",
+    "Population / AI / Physics",
+)
+
+RESOLUTIONS: tuple[ResolutionProfile, ...] = (
+    ResolutionProfile("720p", "720p", 0.34, -0.6),
+    ResolutionProfile("900p", "900p", 0.46, -0.3),
+    ResolutionProfile("1080p", "1080p", 0.62, 0.0),
+    ResolutionProfile("1440p", "1440p", 1.00, 0.9),
+    ResolutionProfile("4k", "4K", 1.92, 2.1),
+)
+
+UPSCALERS: tuple[UpscalerProfile, ...] = (
+    UpscalerProfile(
+        id="native",
+        generic_label="Native",
+        render_multiplier=1.00,
+        description_en="Full native pixel rendering without spatial upscaling.",
+        description_fa="رندر کامل رزولوشن بومی بدون ارتقای تصویر.",
+    ),
+    UpscalerProfile(
+        id="native_aa",
+        generic_label="Native AA",
+        render_multiplier=1.04,
+        description_en="Native resolution with AI/temporal anti-aliasing (~4% shader cost).",
+        description_fa="رزولوشن بومی همراه با آنتی‌آلیاسینگ هوش مصنوعی (حدود ۴٪ بار اضافه).",
+    ),
+    UpscalerProfile(
+        id="quality",
+        generic_label="Quality",
+        render_multiplier=0.55,
+        description_en="~67% internal resolution scale; high clarity + strong FPS gain.",
+        description_fa="مقیاس داخلی حدود ۶۷٪؛ وضوح عالی با افزایش چشمگیر فریم‌ریت.",
+    ),
+    UpscalerProfile(
+        id="balanced",
+        generic_label="Balanced",
+        render_multiplier=0.45,
+        description_en="~58% internal resolution scale; great middle ground at 1440p/4K.",
+        description_fa="مقیاس داخلی حدود ۵۸٪؛ تعادل مناسب برای 1440p و 4K.",
+    ),
+    UpscalerProfile(
+        id="performance",
+        generic_label="Performance",
+        render_multiplier=0.37,
+        description_en="~50% internal resolution scale; maximizes GPU headroom.",
+        description_fa="مقیاس داخلی ۵۰٪؛ بیشترین افزایش فریم برای کارت‌های ضعیف‌تر یا 4K.",
+    ),
+)
+
+FRAME_GEN_MODES: tuple[FrameGenProfile, ...] = (
+    FrameGenProfile("off", "Off", 1.00, 0.00, requires_fg=False, requires_mfg=False),
+    FrameGenProfile("2x", "2x FG", 1.72, 0.08, requires_fg=True, requires_mfg=False),
+    FrameGenProfile("3x", "MFG 3x", 2.40, 0.09, requires_fg=True, requires_mfg=True),
+    FrameGenProfile("4x", "MFG 4x", 3.00, 0.10, requires_fg=True, requires_mfg=True),
+)
+
+SETTINGS: tuple[SettingDefinition, ...] = (
+    SettingDefinition(
+        id="rtgi",
+        name="Global Illumination (RTGI)",
+        category="Lighting & RT",
+        badges=("RT", "VRAM"),
+        options=(
+            SettingOption("Medium", rt_cost=0.00, vram_mb=0.0),
+            SettingOption("High", rt_cost=0.28, vram_mb=450.0),
+            SettingOption("Ultra", rt_cost=0.55, vram_mb=800.0),
+        ),
+        default_option="Medium",
+        tex2_subsettings="Diffuse GI, Probe Resolution, Bounce Count, GI Radiance Cache",
+        tooltip_en=(
+            "Hardware ray-traced diffuse global illumination (always active from Medium upward). "
+            "High/Ultra dramatically increases RT core load and GI probe VRAM footprint."
+        ),
+        tooltip_fa=(
+            "نورپردازی سراسری ردیابی پرتو (RTGI) که از سطح Medium همیشه فعال است. "
+            "افزایش آن فشار سنگینی به هسته‌های RT و حافظه VRAM وارد می‌کند."
+        ),
+    ),
+    SettingDefinition(
+        id="rt_shadows",
+        name="Ray-Traced Shadows (Dir + Local + LOD)",
+        category="Lighting & RT",
+        badges=("RT", "CPU", "VRAM"),
+        options=(
+            SettingOption("Off / None", rt_cost=0.00, cpu_cost=0.00, vram_mb=0.0),
+            SettingOption("Medium", rt_cost=0.22, cpu_cost=0.05, vram_mb=400.0),
+            SettingOption("High", rt_cost=0.40, cpu_cost=0.09, vram_mb=700.0),
+        ),
+        default_option="Off / None",
+        tex2_subsettings="Directional RT Shadows, Local RT Shadows, RT Shadow LOD",
+        tooltip_en=(
+            "Replaces shadow maps with ray-traced sun & local light shadows. "
+            "Disabled on base consoles; stresses RT cores, BVH CPU traversal, and VRAM."
+        ),
+        tooltip_fa=(
+            "سایه‌های خورشید و نورهای محلی با ردیابی پرتو. روی کنسول‌های پایه خاموش است؛ "
+            "فشار همزمان بر RT، پردازنده (BVH) و VRAM دارد."
+        ),
+    ),
+    SettingDefinition(
+        id="reflections",
+        name="Reflection Quality",
+        category="Lighting & RT",
+        badges=("RT", "GPU", "VRAM"),
+        options=(
+            SettingOption("Low", rt_cost=0.00, raster_cost=0.00, vram_mb=0.0),
+            SettingOption("Medium", rt_cost=0.14, raster_cost=0.06, vram_mb=250.0),
+            SettingOption("High", rt_cost=0.32, raster_cost=0.12, vram_mb=550.0),
+        ),
+        default_option="Low",
+        tex2_subsettings="RT Reflections,SSR Hybrid Fallback, Roughness Cutoff, Car Paint Reflections",
+        tooltip_en=(
+            "Controls ray-traced reflection resolution and trace distance on wet Vice City streets "
+            "and vehicle bodies. Low is the console baseline."
+        ),
+        tooltip_fa=(
+            "دقت و برد بازتاب‌های ردیابی پرتو روی آسفالت خیس و بدنه خودروها. "
+            "تنظیم Low مبنای کنسول‌های PS5 و Xbox است."
+        ),
+    ),
+    SettingDefinition(
+        id="bvh_quality",
+        name="BVH Quality",
+        category="Lighting & RT",
+        badges=("CPU", "RT", "VRAM"),
+        options=(
+            SettingOption("Low", cpu_cost=-0.08, vram_mb=-350.0),
+            SettingOption("Medium", cpu_cost=-0.04, vram_mb=-180.0),
+            SettingOption("High", cpu_cost=0.00, rt_cost=0.00, vram_mb=0.0),
+            SettingOption("Ultra", cpu_cost=0.13, rt_cost=0.05, vram_mb=450.0),
+        ),
+        default_option="High",
+        tex2_subsettings="RT BVH Geometry LOD, Dynamic Instance Rebuild, Foliage BVH Inclusion",
+        tooltip_en=(
+            "Controls how much world geometry is updated in the ray-tracing acceleration structure "
+            "each frame. Ultra hits CPU simulation threads and 1% lows hard during high-speed driving."
+        ),
+        tooltip_fa=(
+            "حجم هندسه دنیای بازی در ساختار BVH برای ردیابی پرتو را تعیین می‌کند. "
+            "حالت Ultra فشار زیادی به پردازنده و افت فریم‌های لحظه‌ای (1% Low) می‌آورد."
+        ),
+    ),
+    SettingDefinition(
+        id="raster_shadows",
+        name="Directional & Local Raster Shadows",
+        category="Lighting & RT",
+        badges=("GPU", "VRAM"),
+        options=(
+            SettingOption("Low", raster_cost=-0.06),
+            SettingOption("Medium", raster_cost=-0.03),
+            SettingOption("High", raster_cost=0.00, vram_mb=0.0),
+            SettingOption("Ultra", raster_cost=0.08, vram_mb=150.0),
+        ),
+        default_option="High",
+        tex2_subsettings="Directional Shadow Cascades, Local Spot/Point Shadow Resolution, Softness",
+        tooltip_en=(
+            "Rasterized shadow map cascade resolution and local streetlamp/interior shadow pools."
+        ),
+        tooltip_fa=(
+            "وضوح سایه‌های سنتی خورشید و منابع نوری شهری مثل چراغ‌های خیابان و خودروها."
+        ),
+    ),
+    SettingDefinition(
+        id="texture_quality",
+        name="Texture Quality",
+        category="Textures & World",
+        badges=("VRAM", "GPU"),
+        options=(
+            SettingOption("Medium", vram_mb=-1300.0),
+            SettingOption("High", vram_mb=0.0),
+            SettingOption("Ultra", vram_mb=1600.0, raster_cost=0.02),
+        ),
+        default_option="High",
+        tex2_subsettings="World Streaming Pool, Mip Bias, Anisotropic Quality, Normal/Roughness Maps",
+        tooltip_en=(
+            "Primary driver of VRAM allocation. Almost zero FPS penalty until VRAM overflows, "
+            "at which point 8GB cards suffer severe PCIe stutter."
+        ),
+        tooltip_fa=(
+            "مهم‌ترین عامل مصرف حافظه VRAM. تا زمانی که VRAM پر نشود افت فریم کمی دارد، "
+            "اما روی کارت‌های ۸ گیگابایتی در حالت Ultra باعث لگ شدید می‌شود."
+        ),
+    ),
+    SettingDefinition(
+        id="vehicle_textures",
+        name="Vehicle Max Texture & HD Count",
+        category="Textures & World",
+        badges=("VRAM",),
+        options=(
+            SettingOption("Medium", vram_mb=-500.0),
+            SettingOption("High", vram_mb=-200.0),
+            SettingOption("Ultra", vram_mb=0.0),
+        ),
+        default_option="Ultra",
+        tex2_subsettings="Vehicle Max Texture Size, Simultaneous HD Vehicle Pool",
+        tooltip_en=(
+            "Limits how many nearby vehicles retain uncompressed HD liveries and interior textures "
+            "simultaneously. Drop to High/Medium to save 200-500 MB VRAM on 8GB GPUs."
+        ),
+        tooltip_fa=(
+            "تعداد خودروهای هم‌زمان با بافت HD را کنترل می‌کند. کاهش آن به High یا Medium "
+            "حدود ۲۰۰ تا ۵۰۰ مگابایت VRAM ذخیره می‌کند."
+        ),
+    ),
+    SettingDefinition(
+        id="trees_terrain_grass",
+        name="Trees / Terrain / Grass & Alpha Shadows",
+        category="Textures & World",
+        badges=("GPU", "CPU", "VRAM"),
+        options=(
+            SettingOption("Low", raster_cost=-0.07, cpu_cost=-0.03),
+            SettingOption("Medium", raster_cost=0.00, cpu_cost=0.00, vram_mb=0.0),
+            SettingOption("High", raster_cost=0.12, cpu_cost=0.04, vram_mb=250.0),
+        ),
+        default_option="Medium",
+        tex2_subsettings="Tree Density & LOD, Terrain Detail, Grass Shadows, Foliage Alpha Shadows",
+        tooltip_en=(
+            "Foliage geometry, grass shadow casting, and Leonida wetlands alpha-tested shadows. "
+            "High adds noticeable GPU raster & CPU draw-call overhead."
+        ),
+        tooltip_fa=(
+            "جزئیات پوشش گیاهی، درختان نخل و سایه علفزارها. در حالت High هم بار GPU و هم "
+            "تعداد فراخوانی‌های CPU را افزایش می‌دهد."
+        ),
+    ),
+    SettingDefinition(
+        id="lod_scale",
+        name="LOD Scale",
+        category="Textures & World",
+        badges=("CPU", "GPU", "VRAM"),
+        options=(
+            SettingOption("0.8", cpu_cost=-0.06, raster_cost=-0.05),
+            SettingOption("1.0", cpu_cost=0.00, raster_cost=0.00, vram_mb=0.0),
+            SettingOption("1.2", cpu_cost=0.12, raster_cost=0.09, vram_mb=350.0),
+        ),
+        default_option="1.0",
+        tex2_subsettings="World Geometry LOD Distance, Building Detail Pop-in Scale",
+        tooltip_en=(
+            "Pushes geometric detail distance further across Vice City skylines. "
+            "1.2 increases CPU draw calls, GPU geometry throughput, and VRAM usage."
+        ),
+        tooltip_fa=(
+            "فاصله لود شدن جزئیات ساختمان‌ها و محیط را افزایش می‌دهد. مقدار 1.2 فشار قابل توجهی "
+            "به CPU، GPU و VRAM وارد می‌کند."
+        ),
+    ),
+    SettingDefinition(
+        id="water_tessellation",
+        name="Water & Tessellation Quality",
+        category="Water",
+        badges=("GPU", "VRAM"),
+        options=(
+            SettingOption("Low", raster_cost=-0.04, cpu_cost=-0.01),
+            SettingOption("Medium", raster_cost=-0.02),
+            SettingOption("High", raster_cost=0.00, cpu_cost=0.00, vram_mb=0.0),
+            SettingOption("Ultra", raster_cost=0.05, cpu_cost=0.01, vram_mb=150.0),
+        ),
+        default_option="High",
+        tex2_subsettings="Ocean FFT Wave Simulation, Shoreline Foam, Adaptive Terrain Tessellation",
+        tooltip_en=(
+            "Controls Vice Beach ocean wave physics shaders and hardware tessellation displacement."
+        ),
+        tooltip_fa=(
+            "کیفیت شبیه‌سازی امواج اقیانوس و تسلیشن سطح آب و زمین را تنظیم می‌کند."
+        ),
+    ),
+    SettingDefinition(
+        id="volumetrics",
+        name="Volumetrics Lighting & Scattering",
+        category="Volumetrics & Particles",
+        badges=("GPU", "VRAM"),
+        options=(
+            SettingOption("Low", raster_cost=-0.09),
+            SettingOption("Medium", raster_cost=0.00, vram_mb=0.0),
+            SettingOption("High", raster_cost=0.16, vram_mb=200.0),
+            SettingOption("Ultra", raster_cost=0.28, vram_mb=350.0),
+        ),
+        default_option="Medium",
+        tex2_subsettings="Volumetric Fog Froxels, Cloud Shadows, Atmospheric Scattering, Particle Lit Fog",
+        tooltip_en=(
+            "Froxel-based volumetric fog, Vice City neon haze, and volumetric clouds. "
+            "Very heavy GPU compute/pixel shader cost at High and Ultra."
+        ),
+        tooltip_fa=(
+            "مه حجمی، نورپردازی نئونی در هوا و ابرهای سه‌بعدی. در سطوح High و Ultra "
+            "از سنگین‌ترین تنظیمات روی پردازنده گرافیکی (GPU) است."
+        ),
+    ),
+    SettingDefinition(
+        id="hair_quality",
+        name="Hair Quality & Simulation",
+        category="Hair",
+        badges=("GPU", "CPU", "VRAM"),
+        options=(
+            SettingOption("Low", raster_cost=-0.04, cpu_cost=-0.02),
+            SettingOption("Medium", raster_cost=-0.02),
+            SettingOption("High", raster_cost=0.00, cpu_cost=0.00, vram_mb=0.0),
+            SettingOption("Ultra", raster_cost=0.05, cpu_cost=0.02, vram_mb=150.0),
+        ),
+        default_option="High",
+        tex2_subsettings="Strand-Based Hair Rendering, Wind & Character Hair Physics",
+        tooltip_en=(
+            "Strand-based hair tessellation and physics simulation for Lucia, Jason, and nearby NPCs."
+        ),
+        tooltip_fa=(
+            "رندر تار‌به‌تار و فیزیک مو برای شخصیت‌های اصلی و عابران نزدیک."
+        ),
+    ),
+    SettingDefinition(
+        id="ped_vehicle_density",
+        name="Pedestrian & Vehicle Density",
+        category="Population / AI / Physics",
+        badges=("CPU", "RAM", "VRAM"),
+        options=(
+            SettingOption("Low", cpu_cost=-0.25, ram_mb=-600.0, vram_mb=-250.0),
+            SettingOption("Medium", cpu_cost=-0.14, ram_mb=-300.0),
+            SettingOption("High", cpu_cost=0.00, ram_mb=0.0, vram_mb=0.0),
+            SettingOption("Ultra", cpu_cost=0.18, ram_mb=550.0, vram_mb=300.0),
+        ),
+        default_option="High",
+        tex2_subsettings="Pedestrian Crowd Budget, Traffic Vehicle Budget, Distant Impostor Density",
+        tooltip_en=(
+            "Biggest CPU & System RAM knob in GTA VI. Lowering from High to Medium or Low "
+            "immediately lifts CPU-bottlenecked 1% Lows in downtown Vice City."
+        ),
+        tooltip_fa=(
+            "بزرگ‌ترین مصرف‌کننده CPU و رم سیستم در GTA VI. کاهش آن به Medium یا Low "
+            "بلافاصله گلوگاه پردازنده و افت فریم شهر را برطرف می‌کند."
+        ),
+    ),
+    SettingDefinition(
+        id="ai_physics",
+        name="AI Behavior / Motion / Physics Quality",
+        category="Population / AI / Physics",
+        badges=("CPU",),
+        options=(
+            SettingOption("Medium", cpu_cost=-0.12),
+            SettingOption("High", cpu_cost=0.00),
+            SettingOption("Ultra", cpu_cost=0.14),
+        ),
+        default_option="High",
+        tex2_subsettings="AI Navigation & Reaction Tick, Ragdoll/Cloth Physics, Vehicle Suspension Solver",
+        tooltip_en=(
+            "Controls NPC crowd decision frequency, animation blending, and rigid-body physics ticks. "
+            "Pure CPU simulation cost."
+        ),
+        tooltip_fa=(
+            "دقت هوش مصنوعی، واکنش عابران، فیزیک تصادفات و انیمیشن‌ها را کنترل می‌کند؛ "
+            "تأثیر مستقیم و خالص بر پردازنده (CPU) دارد."
+        ),
+    ),
+)
+
+SETTING_BY_ID: dict[str, SettingDefinition] = {s.id: s for s in SETTINGS}
+RESOLUTION_BY_ID: dict[str, ResolutionProfile] = {r.id: r for r in RESOLUTIONS}
+UPSCALER_BY_ID: dict[str, UpscalerProfile] = {u.id: u for u in UPSCALERS}
+FRAME_GEN_BY_ID: dict[str, FrameGenProfile] = {f.id: f for f in FRAME_GEN_MODES}
+
+
+def default_settings_map() -> dict[str, str]:
+    """Return the PS5 / Series X baseline setting dictionary."""
+    return {s.id: s.default_option for s in SETTINGS}
+
+
+SETTINGS_PRESETS: tuple[SettingsPreset, ...] = (
+    SettingsPreset(
+        id="series_s",
+        label="Series S",
+        values={
+            "rtgi": "Medium",
+            "rt_shadows": "Off / None",
+            "reflections": "Low",
+            "bvh_quality": "Medium",
+            "raster_shadows": "Medium",
+            "texture_quality": "Medium",
+            "vehicle_textures": "Medium",
+            "trees_terrain_grass": "Low",
+            "lod_scale": "0.8",
+            "water_tessellation": "Medium",
+            "volumetrics": "Low",
+            "hair_quality": "Medium",
+            "ped_vehicle_density": "Medium",
+            "ai_physics": "Medium",
+        },
+        description_en="Xbox Series S parity profile: trimmed crowds, Medium textures, reduced LOD & volumetrics.",
+        description_fa="پروفایل معادل Xbox Series S: جمعیت و بافت Medium و کاهش حجم دود و جزئیات دور.",
+    ),
+    SettingsPreset(
+        id="ps5_xsx",
+        label="PS5 / Series X",
+        values=default_settings_map(),
+        description_en="Leaked Tex2 PS5 / Series X baseline (RTGI Medium, RT Shadows Off, Reflections Low).",
+        description_fa="پروفایل پایه PS5 / Series X مطابق جدول لورفته (RTGI Medium و بازتاب Low).",
+    ),
+    SettingsPreset(
+        id="ps5_pro",
+        label="PS5 Pro",
+        values={
+            "rtgi": "High",
+            "rt_shadows": "Medium",
+            "reflections": "Medium",
+            "bvh_quality": "High",
+            "raster_shadows": "High",
+            "texture_quality": "High",
+            "vehicle_textures": "Ultra",
+            "trees_terrain_grass": "High",
+            "lod_scale": "1.0",
+            "water_tessellation": "High",
+            "volumetrics": "High",
+            "hair_quality": "High",
+            "ped_vehicle_density": "High",
+            "ai_physics": "High",
+        },
+        description_en="PS5 Pro enhanced RT profile: RTGI High, RT Shadows Medium, Reflections Medium.",
+        description_fa="پروفایل ارتقایافته PS5 Pro با RTGI High، سایه RT متوسط و بازتاب Medium.",
+    ),
+    SettingsPreset(
+        id="sweet_spot_900p",
+        label="900p Sweet Spot",
+        values={
+            "rtgi": "Medium",
+            "rt_shadows": "Medium",
+            "reflections": "Low",
+            "bvh_quality": "High",
+            "raster_shadows": "High",
+            "texture_quality": "High",
+            "vehicle_textures": "High",
+            "trees_terrain_grass": "Medium",
+            "lod_scale": "1.0",
+            "water_tessellation": "High",
+            "volumetrics": "Medium",
+            "hair_quality": "High",
+            "ped_vehicle_density": "High",
+            "ai_physics": "High",
+        },
+        resolution_id="900p",
+        upscaler_id="native_aa",
+        description_en="Crisp 900p Native AA sweet spot with RT Shadows On & BVH High for 12GB mid-range GPUs.",
+        description_fa="پروفایل بهینه 900p Native AA همراه با سایه RT فعال و BVH High برای کارت‌های میان‌رده.",
+    ),
+    SettingsPreset(
+        id="all_ultra",
+        label="All Ultra",
+        values={s.id: s.options[-1].label for s in SETTINGS},
+        description_en="Maximum quality across every setting — extreme VRAM, RT, and CPU demand.",
+        description_fa="حداکثر کیفیت در تمام گزینه‌ها؛ فشار بسیار سنگین بر VRAM، هسته‌های RT و CPU.",
+    ),
+)
+
+SETTINGS_PRESET_BY_ID: dict[str, SettingsPreset] = {p.id: p for p in SETTINGS_PRESETS}
+
+
+================================================================================
+FILE: engine/__init__.py
+================================================================================
+"""Prediction and auto-optimization engine."""
+
+
+================================================================================
+FILE: engine/predictor.py
+================================================================================
+"""Deterministic mathematical engine for GTA VI FPS, 1% Low, memory, and bottleneck estimation."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Literal
+
+from data.hardware_db import (
+    CONSOLE_REFERENCES,
+    CPU_BY_ID,
+    GPU_BY_ID,
+    GPUS,
+    RAM_SPEED_BY_ID,
+    CPUProfile,
+    GPUProfile,
+    RAMSpeedProfile,
+    StorageType,
+    get_platform_compatibility_notes,
+)
+from data.settings_db import (
+    FRAME_GEN_BY_ID,
+    RESOLUTION_BY_ID,
+    SETTING_BY_ID,
+    SETTINGS,
+    UPSCALER_BY_ID,
+)
+
+BottleneckKind = Literal["GPU / RT", "CPU", "VRAM Overflow", "RAM / Unified Overflow", "Balanced"]
+
+_RES_OVERHEAD_SCALE: dict[str, float] = {
+    "720p": 1.05,
+    "900p": 1.00,
+    "1080p": 0.96,
+    "1440p": 0.80,
+    "4k": 0.72,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class SimulationInput:
+    """Complete snapshot of hardware, display, and graphics parameters."""
+
+    gpu_id: str
+    cpu_id: str
+    ram_gb: int
+    ram_speed_id: str
+    rebar_enabled: bool
+    gpu_oc_percent: int
+    storage_type: StorageType
+    is_laptop_mode: bool
+    resolution_id: str
+    upscaler_id: str
+    frame_gen_id: str
+    settings: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class WarningMessage:
+    """Severity-tagged telemetry alert with bilingual explanation."""
+
+    severity: Literal["warning", "critical", "info"]
+    code: str
+    title_en: str
+    detail_en: str
+    title_fa: str
+    detail_fa: str
+
+
+@dataclass(frozen=True, slots=True)
+class SimulationResult:
+    """Full live telemetry output for the UI and multi-GPU comparisons."""
+
+    base_fps: float
+    low_1pct_fps: float
+    fg_fps: float
+    effective_fg_id: str
+    fg_fallback_note: str | None
+    raw_gpu_fps: float
+    raw_cpu_fps: float
+    gpu_load_pct: float
+    rt_load_pct: float
+    cpu_load_pct: float
+    vram_used_gb: float
+    vram_total_gb: float
+    vram_overflow_gb: float
+    ram_used_gb: float
+    ram_total_gb: float
+    ram_overflow_gb: float
+    is_unified_pool: bool
+    unified_pool_used_gb: float
+    unified_pool_total_gb: float
+    effective_res_factor: float
+    total_raster_cost: float
+    total_rt_cost: float
+    total_cpu_cost: float
+    primary_bottleneck: BottleneckKind
+    diagnosis_en: str
+    diagnosis_fa: str
+    recommendation_en: str
+    recommendation_fa: str
+    warnings: tuple[WarningMessage, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class GPUComparisonEntry:
+    """Single row for the live Multi-GPU comparison bar chart."""
+
+    gpu_id: str
+    label: str
+    base_fps: float
+    low_1pct_fps: float
+    is_selected: bool
+    is_reference_console: bool
+    has_vram_overflow: bool
+    notes: str
+
+
+@dataclass(frozen=True, slots=True)
+class AutoOptimizeResult:
+    """Output of the Auto-Optimize for 60 FPS algorithm."""
+
+    settings: dict[str, str]
+    upscaler_id: str
+    changed_items: tuple[str, ...]
+    reached_target: bool
+    resulting_base_fps: float
+    summary_en: str
+    summary_fa: str
+
+
+def _damp_cost_above_baseline(cost: float, slope: float = 0.32, floor: float = 0.45) -> float:
+    """Preserve <=1.0 savings linearly while modeling engine pass overlap above 1.0."""
+    clamped = max(floor, cost)
+    if clamped <= 1.0:
+        return clamped
+    return 1.0 + slope * (clamped - 1.0)
+
+
+def _smooth_min(a: float, b: float, power: float = 16.0) -> float:
+    """Smooth min(a, b) with realistic ~4% frame-time contention when CPU and GPU match."""
+    safe_a = max(1.0, a)
+    safe_b = max(1.0, b)
+    return 1.0 / ((safe_a ** (-power) + safe_b ** (-power)) ** (1.0 / power))
+
+
+def _resolve_fg(gpu: GPUProfile, requested_fg_id: str) -> tuple[str, float, float, str | None]:
+    """Validate frame generation compatibility against the selected GPU."""
+    fg = FRAME_GEN_BY_ID.get(requested_fg_id, FRAME_GEN_BY_ID["off"])
+    if fg.id == "off":
+        return "off", 1.0, 0.0, None
+    if not gpu.supports_fg:
+        return "off", 1.0, 0.0, f"{gpu.name} does not support PC Frame Generation; reverted to Off."
+    if fg.requires_mfg and not gpu.supports_mfg:
+        fallback = FRAME_GEN_BY_ID["2x"]
+        return (
+            fallback.id,
+            fallback.fps_multiplier,
+            fallback.base_overhead,
+            f"MFG ({fg.label}) requires RTX 50-series; fell back to 2x FG ({gpu.fg_label}).",
+        )
+    return fg.id, fg.fps_multiplier, fg.base_overhead, None
+
+
+def _accumulate_costs(settings_map: dict[str, str]) -> tuple[float, float, float, float, float]:
+    """Sum setting deltas relative to PS5 / Series X baseline."""
+    raster = 1.0
+    rt = 1.0
+    cpu = 1.0
+    vram_mb = 0.0
+    ram_mb = 0.0
+
+    for definition in SETTINGS:
+        chosen = settings_map.get(definition.id, definition.default_option)
+        opt = definition.get_option(chosen)
+        raster += opt.raster_cost
+        rt += opt.rt_cost
+        cpu += opt.cpu_cost
+        vram_mb += opt.vram_mb
+        ram_mb += opt.ram_mb
+
+    return raster, rt, cpu, vram_mb, ram_mb
+
+
+def simulate(
+    sim_input: SimulationInput,
+    gpu_override: GPUProfile | None = None,
+    cpu_override: CPUProfile | None = None,
+) -> SimulationResult:
+    """Run deterministic telemetry simulation for the provided hardware and settings."""
+    gpu = gpu_override or GPU_BY_ID[sim_input.gpu_id]
+    cpu: CPUProfile = cpu_override or CPU_BY_ID[sim_input.cpu_id]
+    ram_speed: RAMSpeedProfile = RAM_SPEED_BY_ID[sim_input.ram_speed_id]
+    res = RESOLUTION_BY_ID[sim_input.resolution_id]
+    upscaler = UPSCALER_BY_ID[sim_input.upscaler_id]
+
+    eff_fg_id, fg_mult, _fg_overhead, fg_note = _resolve_fg(gpu, sim_input.frame_gen_id)
+    effective_res_factor = res.base_res_factor * upscaler.render_multiplier
+
+    raw_raster, raw_rt, raw_cpu, delta_vram_mb, delta_ram_mb = _accumulate_costs(sim_input.settings)
+
+    damped_raster = _damp_cost_above_baseline(raw_raster, slope=0.32)
+    damped_rt = _damp_cost_above_baseline(raw_rt, slope=0.32)
+    damped_cpu = _damp_cost_above_baseline(raw_cpu, slope=0.32)
+
+    if cpu.has_3d_vcache and damped_cpu > 1.0:
+        # 96MB 3D V-Cache mitigates Ultra BVH/AI cache thrashing.
+        damped_cpu = 1.0 + 0.85 * (damped_cpu - 1.0)
+
+    # 1. VRAM & System RAM demand
+    fg_vram_gb = 0.55 if eff_fg_id != "off" else 0.0
+    vram_used_gb = max(
+        3.0,
+        7.4 + res.vram_delta_gb + fg_vram_gb + (delta_vram_mb / 1024.0),
+    )
+    os_ram_gb = 4.2
+    game_ram_gb = max(4.5, 8.2 + (delta_ram_mb / 1024.0))
+    ram_used_gb = os_ram_gb + game_ram_gb
+
+    is_unified_pool = gpu.is_unified_memory
+    if is_unified_pool:
+        unified_pool_total_gb = float(sim_input.ram_gb)
+        unified_pool_used_gb = os_ram_gb + game_ram_gb + (vram_used_gb * 0.72)
+        vram_total_gb = unified_pool_total_gb
+        ram_total_gb = unified_pool_total_gb
+        vram_overflow_gb = max(0.0, unified_pool_used_gb - unified_pool_total_gb)
+        ram_overflow_gb = vram_overflow_gb
+    else:
+        unified_pool_total_gb = float(sim_input.ram_gb)
+        unified_pool_used_gb = ram_used_gb
+        vram_total_gb = gpu.vram_gb
+        ram_total_gb = float(sim_input.ram_gb)
+        vram_overflow_gb = max(0.0, vram_used_gb - (gpu.vram_gb - 0.3))
+        ram_overflow_gb = max(0.0, ram_used_gb - float(sim_input.ram_gb))
+
+    # 2. Raw GPU FPS ceiling (calibrated around PS5 GPU = 100 baseline)
+    rt_share = 0.45 * (damped_rt / max(0.5, 0.55 * damped_raster + 0.45 * damped_rt))
+    rt_share = min(0.62, max(0.30, rt_share))
+    raster_share = 1.0 - rt_share
+
+    weighted_gpu_score = (raster_share * gpu.raster_score + rt_share * gpu.rt_score) / 100.0
+    oc_mult = 1.0 + (max(0, min(7, sim_input.gpu_oc_percent)) / 100.0)
+    weighted_gpu_demand = raster_share * damped_raster + rt_share * damped_rt
+
+    raw_gpu_fps = (weighted_gpu_score * oc_mult / weighted_gpu_demand) * 32.0 / effective_res_factor
+
+    # Dedicated VRAM or Unified Pool GPU spillover penalty
+    if is_unified_pool:
+        vram_avg_mult = max(0.50, 1.0 - vram_overflow_gb * 0.10) if vram_overflow_gb > 0 else 1.0
+        vram_low_mult = max(0.30, 1.0 - vram_overflow_gb * 0.24) if vram_overflow_gb > 0 else 1.0
+    else:
+        pcie_penalty = 0.22 if gpu.pcie_lanes == "x8" else 0.16
+        vram_avg_mult = max(0.30, 1.0 - vram_overflow_gb * pcie_penalty) if vram_overflow_gb > 0 else 1.0
+        vram_low_mult = max(0.20, 1.0 - vram_overflow_gb * 0.32) if vram_overflow_gb > 0 else 1.0
+
+    # 3. Raw CPU FPS ceiling
+    if gpu.is_reference_console:
+        driver_overhead = 0.0
+    else:
+        base_overhead = (
+            gpu.driver_cpu_overhead if sim_input.rebar_enabled else gpu.driver_cpu_overhead_no_rebar
+        )
+        driver_overhead = base_overhead * _RES_OVERHEAD_SCALE.get(res.id, 0.90)
+
+    effective_cpu_score = cpu.gaming_score * ram_speed.cpu_multiplier * (1.0 - driver_overhead)
+    raw_cpu_fps = (effective_cpu_score * 0.88) / damped_cpu
+
+    # 4. System RAM swap penalty (desktop dedicated or unified pool)
+    if ram_overflow_gb > 0 and not is_unified_pool:
+        ram_avg_mult = 0.65
+        ram_low_mult = 0.40
+    elif ram_overflow_gb > 0 and is_unified_pool:
+        ram_avg_mult = 0.80
+        ram_low_mult = 0.58
+    else:
+        ram_avg_mult = 1.0
+        ram_low_mult = 1.0
+
+    # 5. Laptop thermal & power coupling penalty (20-25W shared TDP)
+    is_thermal_coupled = (
+        (sim_input.is_laptop_mode or gpu.is_laptop_thermal or cpu.is_laptop_thermal)
+        and not gpu.is_reference_console
+    )
+    thermal_mult = 0.82 if is_thermal_coupled else 1.0
+
+    effective_gpu_fps = raw_gpu_fps * vram_avg_mult * thermal_mult
+    effective_cpu_fps = raw_cpu_fps * ram_avg_mult * thermal_mult
+
+    # 6. Smooth bottleneck blending & 1% Low FPS
+    base_fps = _smooth_min(effective_gpu_fps, effective_cpu_fps, power=16.0)
+
+    # 1% Low calculation
+    cpu_low_ram_ratio = ram_speed.low_1pct_multiplier / ram_speed.cpu_multiplier
+    cpu_low_fps = effective_cpu_fps * 0.785 * cpu_low_ram_ratio
+    gpu_low_fps = effective_gpu_fps * 0.86
+
+    low_1pct_fps = _smooth_min(cpu_low_fps, gpu_low_fps, power=12.0)
+    low_1pct_fps *= vram_low_mult
+    if not is_unified_pool:
+        low_1pct_fps *= ram_low_mult
+    if sim_input.storage_type == "SATA / HDD":
+        low_1pct_fps *= 0.72
+    low_1pct_fps = min(base_fps * 0.94, max(1.0, low_1pct_fps))
+
+    # Frame generation output
+    fg_fps = base_fps * fg_mult if eff_fg_id != "off" else base_fps
+
+    # Component Load % estimates
+    gpu_load_pct = min(100.0, max(12.0, (base_fps / max(1.0, effective_gpu_fps)) * 99.0))
+    rt_load_pct = min(100.0, max(10.0, gpu_load_pct * min(1.12, 0.78 * damped_rt)))
+    cpu_load_pct = min(100.0, max(10.0, (base_fps / max(1.0, effective_cpu_fps)) * 96.0))
+
+    # Determine primary bottleneck and warnings
+    warnings: list[WarningMessage] = []
+    if vram_overflow_gb > 0 and not is_unified_pool:
+        primary_bottleneck: BottleneckKind = "VRAM Overflow"
+    elif ram_overflow_gb > 0:
+        primary_bottleneck = "RAM / Unified Overflow"
+    elif abs(effective_gpu_fps - effective_cpu_fps) / max(effective_gpu_fps, effective_cpu_fps) <= 0.08:
+        primary_bottleneck = "Balanced"
+    elif effective_gpu_fps < effective_cpu_fps:
+        primary_bottleneck = "GPU / RT"
+    else:
+        primary_bottleneck = "CPU"
+
+    if not gpu.is_reference_console:
+        warnings.extend(
+            _build_warnings(
+                sim_input=sim_input,
+                gpu=gpu,
+                cpu=cpu,
+                ram_speed=ram_speed,
+                base_fps=base_fps,
+                eff_fg_id=eff_fg_id,
+                fg_note=fg_note,
+                vram_used_gb=vram_used_gb,
+                vram_total_gb=vram_total_gb,
+                vram_overflow_gb=vram_overflow_gb,
+                ram_used_gb=ram_used_gb,
+                ram_total_gb=ram_total_gb,
+                ram_overflow_gb=ram_overflow_gb,
+                is_unified_pool=is_unified_pool,
+                unified_pool_used_gb=unified_pool_used_gb,
+                unified_pool_total_gb=unified_pool_total_gb,
+            )
+        )
+
+    diag_en, diag_fa, rec_en, rec_fa = _build_diagnosis(
+        primary_bottleneck=primary_bottleneck,
+        gpu=gpu,
+        cpu=cpu,
+        ram_speed=ram_speed,
+        rebar_enabled=sim_input.rebar_enabled,
+        effective_gpu_fps=effective_gpu_fps,
+        effective_cpu_fps=effective_cpu_fps,
+        vram_used_gb=vram_used_gb,
+        vram_total_gb=vram_total_gb,
+        vram_overflow_gb=vram_overflow_gb,
+        ram_overflow_gb=ram_overflow_gb,
+        is_unified_pool=is_unified_pool,
+        unified_pool_used_gb=unified_pool_used_gb,
+        unified_pool_total_gb=unified_pool_total_gb,
+        damped_rt=damped_rt,
+        damped_raster=damped_raster,
+        is_thermal_coupled=is_thermal_coupled,
+        storage_type=sim_input.storage_type,
+    )
+
+    return SimulationResult(
+        base_fps=round(base_fps, 1),
+        low_1pct_fps=round(low_1pct_fps, 1),
+        fg_fps=round(fg_fps, 1),
+        effective_fg_id=eff_fg_id,
+        fg_fallback_note=fg_note,
+        raw_gpu_fps=round(effective_gpu_fps, 1),
+        raw_cpu_fps=round(effective_cpu_fps, 1),
+        gpu_load_pct=round(gpu_load_pct, 1),
+        rt_load_pct=round(rt_load_pct, 1),
+        cpu_load_pct=round(cpu_load_pct, 1),
+        vram_used_gb=round(vram_used_gb, 2),
+        vram_total_gb=round(vram_total_gb, 1),
+        vram_overflow_gb=round(vram_overflow_gb, 2),
+        ram_used_gb=round(ram_used_gb, 2),
+        ram_total_gb=round(ram_total_gb, 1),
+        ram_overflow_gb=round(ram_overflow_gb, 2),
+        is_unified_pool=is_unified_pool,
+        unified_pool_used_gb=round(unified_pool_used_gb, 2),
+        unified_pool_total_gb=round(unified_pool_total_gb, 1),
+        effective_res_factor=round(effective_res_factor, 3),
+        total_raster_cost=round(raw_raster, 2),
+        total_rt_cost=round(raw_rt, 2),
+        total_cpu_cost=round(raw_cpu, 2),
+        primary_bottleneck=primary_bottleneck,
+        diagnosis_en=diag_en,
+        diagnosis_fa=diag_fa,
+        recommendation_en=rec_en,
+        recommendation_fa=rec_fa,
+        warnings=tuple(warnings),
+    )
+
+
+def _build_warnings(
+    *,
+    sim_input: SimulationInput,
+    gpu: GPUProfile,
+    cpu: CPUProfile,
+    ram_speed: RAMSpeedProfile,
+    base_fps: float,
+    eff_fg_id: str,
+    fg_note: str | None,
+    vram_used_gb: float,
+    vram_total_gb: float,
+    vram_overflow_gb: float,
+    ram_used_gb: float,
+    ram_total_gb: float,
+    ram_overflow_gb: float,
+    is_unified_pool: bool,
+    unified_pool_used_gb: float,
+    unified_pool_total_gb: float,
+) -> list[WarningMessage]:
+    warnings: list[WarningMessage] = []
+
+    if is_unified_pool:
+        ratio = unified_pool_used_gb / max(1.0, unified_pool_total_gb)
+        if vram_overflow_gb > 0:
+            warnings.append(
+                WarningMessage(
+                    severity="critical",
+                    code="unified_overflow",
+                    title_en=f"Unified Memory Overflow (+{vram_overflow_gb:.1f} GB)",
+                    detail_en=(
+                        f"Combined OS + GTA VI + VRAM pool needs {unified_pool_used_gb:.1f} GB on a "
+                        f"{unified_pool_total_gb:.0f} GB shared pool. Expect pagefile thrashing & heavy stutters."
+                    ),
+                    title_fa=f"سرریز حافظه یکپارچه لپ‌تاپ (+{vram_overflow_gb:.1f} گیگابایت)",
+                    detail_fa=(
+                        f"مجموع مصرف سیستم‌عامل، بازی و VRAM به {unified_pool_used_gb:.1f} گیگابایت رسیده "
+                        f"که از کل ظرفیت {unified_pool_total_gb:.0f} گیگابایتی بیشتر است و باعث لگ شدید می‌شود."
+                    ),
+                )
+            )
+        elif ratio >= 0.88:
+            warnings.append(
+                WarningMessage(
+                    severity="warning",
+                    code="unified_tight",
+                    title_en=f"Tight Unified Pool ({unified_pool_used_gb:.1f} / {unified_pool_total_gb:.0f} GB)",
+                    detail_en="Shared memory is above 88% utilization; background apps may trigger stutter.",
+                    title_fa=f"فشار بالای حافظه یکپارچه ({unified_pool_used_gb:.1f} از {unified_pool_total_gb:.0f} گیگابایت)",
+                    detail_fa="بیش از ۸۸٪ حافظه مشترک پر شده است؛ برنامه‌های پس‌زمینه می‌توانند افت فریم بدهند.",
+                )
+            )
+    else:
+        if vram_overflow_gb > 0:
+            bus_note = " over PCIe x8!" if gpu.pcie_lanes == "x8" else "."
+            warnings.append(
+                WarningMessage(
+                    severity="critical",
+                    code="vram_overflow",
+                    title_en=f"{vram_total_gb:.0f}GB VRAM Overflow (+{vram_overflow_gb:.1f} GB)",
+                    detail_en=(
+                        f"Requested {vram_used_gb:.1f} GB exceeds {vram_total_gb:.0f} GB VRAM, spilling "
+                        f"into system RAM{bus_note} Severe 1% Low collapse."
+                    ),
+                    title_fa=f"سرریز حافظه VRAM کارت {vram_total_gb:.0f} گیگابایتی (+{vram_overflow_gb:.1f} GB)",
+                    detail_fa=(
+                        f"مصرف {vram_used_gb:.1f} گیگابایت از ظرفیت {vram_total_gb:.0f} گیگابایت کارت عبور کرده "
+                        "و باعث افت شدید فریم لحظه‌ای (1% Low) می‌شود."
+                    ),
+                )
+            )
+        elif (vram_used_gb / max(1.0, vram_total_gb)) >= 0.88:
+            warnings.append(
+                WarningMessage(
+                    severity="warning",
+                    code="vram_near_limit",
+                    title_en=f"High VRAM Pressure ({vram_used_gb:.1f} / {vram_total_gb:.0f} GB)",
+                    detail_en="VRAM usage exceeds 88%; dense downtown scenes may spike textures.",
+                    title_fa=f"مصرف بالای VRAM ({vram_used_gb:.1f} از {vram_total_gb:.0f} گیگابایت)",
+                    detail_fa="مصرف VRAM بالای ۸۸٪ است و در مناطق شلوغ شهر ممکن است نوسان ایجاد کند.",
+                )
+            )
+
+        if ram_overflow_gb > 0:
+            warnings.append(
+                WarningMessage(
+                    severity="critical",
+                    code="ram_overflow",
+                    title_en=f"System RAM Overflow (+{ram_overflow_gb:.1f} GB)",
+                    detail_en=(
+                        f"{ram_used_gb:.1f} GB required on {ram_total_gb:.0f} GB RAM — Windows pagefile "
+                        "swapping cuts 1% Lows dramatically."
+                    ),
+                    title_fa=f"کمبود رم سیستم (+{ram_overflow_gb:.1f} گیگابایت)",
+                    detail_fa=(
+                        f"مصرف {ram_used_gb:.1f} گیگابایت از رم {ram_total_gb:.0f} گیگابایتی بیشتر است "
+                        "و Swap دیسک باعث لگ شدید می‌شود."
+                    ),
+                )
+            )
+
+    if not sim_input.rebar_enabled and gpu.id == "arc_b580":
+        warnings.append(
+            WarningMessage(
+                severity="critical",
+                code="arc_no_rebar",
+                title_en="Resizable BAR OFF on Intel Arc B580",
+                detail_en="Intel Arc driver CPU overhead jumps from 7% to 28% without ReBAR!",
+                title_fa="خاموش بودن Resizable BAR روی کارت Intel Arc B580",
+                detail_fa="بدون ReBAR سربار پردازنده درایور اینتل از ۷٪ به ۲۸٪ جهش می‌کند!",
+            )
+        )
+
+    if eff_fg_id != "off" and base_fps < 38.0:
+        warnings.append(
+            WarningMessage(
+                severity="warning",
+                code="fg_low_base",
+                title_en="High Input Latency / Artifacts Risk (Base FPS < 38)",
+                detail_en=(
+                    f"Base FPS is {base_fps:.1f}; enabling Frame Generation below 38 FPS causes sluggish "
+                    "controls and HUD/motion artifacts."
+                ),
+                title_fa="تاخیر ورودی بالا / ریسک آرتیفکت تصویر (فریم پایه زیر ۳۸)",
+                detail_fa=(
+                    f"فریم پایه {base_fps:.1f} است؛ فعال‌سازی Frame Gen زیر ۳۸ فریم باعث کندی کنترل و خطای تصویر می‌شود."
+                ),
+            )
+        )
+
+    if sim_input.storage_type == "SATA / HDD":
+        warnings.append(
+            WarningMessage(
+                severity="warning",
+                code="slow_storage",
+                title_en="SATA / HDD Streaming Penalty",
+                detail_en="High-speed driving streams RAGE 9 assets too slowly on SATA/HDD (-28% 1% Lows).",
+                title_fa="جریمه سرعت دیسک SATA / HDD",
+                detail_fa="بارگذاری سریع بافت‌ها هنگام رانندگی روی SATA/HDD با افت ۲۸٪ در 1% Low همراه است.",
+            )
+        )
+
+    if fg_note:
+        warnings.append(
+            WarningMessage(
+                severity="info",
+                code="fg_fallback",
+                title_en="Frame Gen Adjusted",
+                detail_en=fg_note,
+                title_fa="تنظیم خودکار Frame Gen",
+                detail_fa=fg_note,
+            )
+        )
+
+    for note in get_platform_compatibility_notes(gpu, cpu, ram_speed, sim_input.is_laptop_mode):
+        warnings.append(
+            WarningMessage(
+                severity="info",
+                code="platform_hint",
+                title_en="Platform Note",
+                detail_en=note,
+                title_fa="نکته سخت‌افزاری",
+                detail_fa=note,
+            )
+        )
+
+    return warnings
+
+
+def _build_diagnosis(
+    *,
+    primary_bottleneck: BottleneckKind,
+    gpu: GPUProfile,
+    cpu: CPUProfile,
+    ram_speed: RAMSpeedProfile,
+    rebar_enabled: bool,
+    effective_gpu_fps: float,
+    effective_cpu_fps: float,
+    vram_used_gb: float,
+    vram_total_gb: float,
+    vram_overflow_gb: float,
+    ram_overflow_gb: float,
+    is_unified_pool: bool,
+    unified_pool_used_gb: float,
+    unified_pool_total_gb: float,
+    damped_rt: float,
+    damped_raster: float,
+    is_thermal_coupled: bool,
+    storage_type: StorageType,
+) -> tuple[str, str, str, str]:
+    thermal_suffix_en = (
+        " Shared 20-25W laptop TDP also caps sustained boost." if is_thermal_coupled else ""
+    )
+    thermal_suffix_fa = (
+        " محدودیت توان مشترک ۲۰ تا ۲۵ واتی لپ‌تاپ نیز سقف کلاک را پایین می‌آورد."
+        if is_thermal_coupled
+        else ""
+    )
+
+    if primary_bottleneck == "VRAM Overflow":
+        diag_en = (
+            f"VRAM Spillover Bottleneck: GTA VI requests {vram_used_gb:.1f} GB on {gpu.name}'s "
+            f"{vram_total_gb:.0f} GB buffer (+{vram_overflow_gb:.1f} GB spill over {gpu.pcie_lanes})."
+        )
+        diag_fa = (
+            f"گلوگاه سرریز VRAM: بازی به {vram_used_gb:.1f} گیگابایت نیاز دارد در حالی که کارت "
+            f"{vram_total_gb:.0f} گیگابایت حافظه دارد (+{vram_overflow_gb:.1f} GB سرریز)."
+        )
+        rec_en = (
+            "Drop Texture Quality to High/Medium, Vehicle HD Count to High, or disable RT Shadows "
+            "to keep allocation under the VRAM cap."
+        )
+        rec_fa = (
+            "کیفیت بافت (Texture) و بافت خودروها را یک پله کم کنید یا RT Shadows را ببندید "
+            "تا مصرف به زیر سقف VRAM برگردد."
+        )
+        return diag_en, diag_fa, rec_en, rec_fa
+
+    if primary_bottleneck == "RAM / Unified Overflow":
+        if is_unified_pool:
+            diag_en = (
+                f"Unified Memory Pool Bottleneck: Shared OS + CPU + GPU demand is "
+                f"{unified_pool_used_gb:.1f} GB vs {unified_pool_total_gb:.0f} GB LPDDR5X.{thermal_suffix_en}"
+            )
+            diag_fa = (
+                f"گلوگاه حافظه یکپارچه لپ‌تاپ: مجموع مصرف سیستم و گرافیک به {unified_pool_used_gb:.1f} از "
+                f"{unified_pool_total_gb:.0f} گیگابایت رسیده است.{thermal_suffix_fa}"
+            )
+            rec_en = (
+                "Lower Resolution to 720p, Texture Quality to Medium, and Pedestrian Density to Medium/Low."
+            )
+            rec_fa = (
+                "رزولوشن را روی 720p بگذارید و Texture Quality و تراکم جمعیت را روی Medium/Low قرار دهید."
+            )
+        else:
+            diag_en = (
+                f"System RAM Overflow: {ram_overflow_gb:.1f} GB beyond physical RAM forces Windows "
+                "disk paging during streaming."
+            )
+            diag_fa = (
+                f"گلوگاه کمبود رم سیستم: {ram_overflow_gb:.1f} گیگابایت سرریز به دیسک باعث افت شدید فریم می‌شود."
+            )
+            rec_en = "Drop Pedestrian & Vehicle Density to Medium/Low and close background browsers."
+            rec_fa = "تراکم عابران و خودروها را کاهش دهید و برنامه‌های پس‌زمینه را ببندید."
+        return diag_en, diag_fa, rec_en, rec_fa
+
+    if primary_bottleneck == "CPU":
+        overhead_txt = (
+            " + Arc ReBAR-OFF overhead (28%)"
+            if (gpu.id == "arc_b580" and not rebar_enabled)
+            else ""
+        )
+        diag_en = (
+            f"CPU Simulation Bottleneck: {cpu.name} + {ram_speed.name}{overhead_txt} caps FPS around "
+            f"{effective_cpu_fps:.0f} FPS while GPU headroom reaches {effective_gpu_fps:.0f} FPS."
+            f"{thermal_suffix_en}"
+        )
+        diag_fa = (
+            f"گلوگاه پردازنده (CPU): ترکیب {cpu.name} و {ram_speed.name} سقف فریم را روی حدود "
+            f"{effective_cpu_fps:.0f} فریم محدود کرده، در حالی که کارت گرافیک توان {effective_gpu_fps:.0f} فریم را دارد."
+            f"{thermal_suffix_fa}"
+        )
+        if gpu.id == "arc_b580" and not rebar_enabled:
+            rec_en = "Enable Resizable BAR in BIOS immediately, then reduce Pedestrian Density or BVH Quality."
+            rec_fa = "حتماً Resizable BAR را در بایوس روشن کنید و سپس تراکم جمعیت یا BVH Quality را کم کنید."
+        else:
+            rec_en = (
+                "Lower Pedestrian & Vehicle Density, AI/Physics Quality, BVH Quality, or LOD Scale — "
+                "changing resolution/upscaler will NOT lift a CPU cap."
+            )
+            rec_fa = (
+                "تراکم جمعیت، کیفیت هوش مصنوعی/فیزیک، BVH یا LOD Scale را کم کنید؛ "
+                "کاهش رزولوشن گلوگاه CPU را برطرف نمی‌کند."
+            )
+        return diag_en, diag_fa, rec_en, rec_fa
+
+    if primary_bottleneck == "GPU / RT":
+        rt_heavy = damped_rt >= damped_raster * 1.08
+        aspect_en = "Ray Tracing (RTGI / RT Shadows / Reflections)" if rt_heavy else "Shader / Pixel Fillrate"
+        aspect_fa = "ردیابی پرتو (RTGI / سایه RT / بازتاب‌ها)" if rt_heavy else "پردازش شیدر و پیکسل"
+        diag_en = (
+            f"GPU Bound ({aspect_en}): {gpu.name} limits output to {effective_gpu_fps:.0f} FPS "
+            f"while {cpu.name} can feed {effective_cpu_fps:.0f} FPS.{thermal_suffix_en}"
+        )
+        diag_fa = (
+            f"گلوگاه کارت گرافیک ({aspect_fa}): کارت {gpu.name} خروجی را روی {effective_gpu_fps:.0f} فریم "
+            f"محدود کرده در حالی که CPU تا {effective_cpu_fps:.0f} فریم توان دارد.{thermal_suffix_fa}"
+        )
+        rec_en = (
+            "Step up Upscaler (Quality/Balanced) or trim RT Shadows, Reflections, and Volumetrics."
+        )
+        rec_fa = (
+            "حالت آپ‌اسکیلر را به Quality/Balanced تغییر دهید یا RT Shadows، Reflections و Volumetrics را پایین بیاورید."
+        )
+        return diag_en, diag_fa, rec_en, rec_fa
+
+    # Balanced
+    storage_hint_en = " (Upgrade to NVMe Gen4 to remove streaming dips.)" if storage_type == "SATA / HDD" else ""
+    storage_hint_fa = " (ارتقا به NVMe Gen4 لگ‌های بارگذاری مسیر را حذف می‌کند.)" if storage_type == "SATA / HDD" else ""
+    diag_en = (
+        f"Well-Balanced System: GPU ({effective_gpu_fps:.0f} FPS) and CPU ({effective_cpu_fps:.0f} FPS) "
+        f"are tightly matched with healthy headroom.{thermal_suffix_en}{storage_hint_en}"
+    )
+    diag_fa = (
+        f"سیستم متعادل: توان کارت گرافیک ({effective_gpu_fps:.0f} فریم) و پردازنده ({effective_cpu_fps:.0f} فریم) "
+        f"هماهنگی بسیار خوبی دارند.{thermal_suffix_fa}{storage_hint_fa}"
+    )
+    rec_en = "Great balance! Fine-tune Upscaler or Volumetrics/RT Shadows only if targeting higher refresh."
+    rec_fa = "تعادل عالی است! تنها در صورت نیاز به فریم بالاتر، آپ‌اسکیلر یا Volumetrics را تنظیم کنید."
+    return diag_en, diag_fa, rec_en, rec_fa
+
+
+def compare_all_gpus(sim_input: SimulationInput) -> list[GPUComparisonEntry]:
+    """Compute Base FPS and 1% Low across all 9 GPUs + PS5 / PS5 Pro console references."""
+    entries: list[GPUComparisonEntry] = []
+
+    for gpu in GPUS:
+        # Compare each GPU fairly on the user's CPU/RAM/settings; if comparing Arc 140V from desktop,
+        # simulate its coupled 16GB shared pool and thermal envelope accurately.
+        if gpu.id == sim_input.gpu_id:
+            res = simulate(sim_input)
+        elif gpu.is_unified_memory:
+            laptop_input = SimulationInput(
+                gpu_id=gpu.id,
+                cpu_id="ultra_7_256v" if sim_input.is_laptop_mode else sim_input.cpu_id,
+                ram_gb=16,
+                ram_speed_id="lpddr5x_8533",
+                rebar_enabled=True,
+                gpu_oc_percent=0,
+                storage_type=sim_input.storage_type,
+                is_laptop_mode=True,
+                resolution_id=sim_input.resolution_id,
+                upscaler_id=sim_input.upscaler_id,
+                frame_gen_id="off",
+                settings=sim_input.settings,
+            )
+            res = simulate(laptop_input, gpu_override=gpu)
+        else:
+            res = simulate(sim_input, gpu_override=gpu)
+
+        entries.append(
+            GPUComparisonEntry(
+                gpu_id=gpu.id,
+                label=gpu.short_name,
+                base_fps=res.base_fps,
+                low_1pct_fps=res.low_1pct_fps,
+                is_selected=(gpu.id == sim_input.gpu_id),
+                is_reference_console=False,
+                has_vram_overflow=(res.vram_overflow_gb > 0),
+                notes=gpu.notes,
+            )
+        )
+
+    for console in CONSOLE_REFERENCES:
+        console_cpu = CPUProfile(
+            id=f"{console.id}_cpu",
+            name="Console Zen 2",
+            gaming_score=58.0 if console.id == "ps5_ref" else 63.0,
+            cores_threads="8C / 16T",
+            architecture_notes="Custom AMD Zen 2 Console APU",
+            socket_hint="Console",
+        )
+        console_input = SimulationInput(
+            gpu_id=console.id,
+            cpu_id="ryzen_5600x",
+            ram_gb=16,
+            ram_speed_id="ddr5_5600",
+            rebar_enabled=True,
+            gpu_oc_percent=0,
+            storage_type="NVMe Gen4",
+            is_laptop_mode=False,
+            resolution_id=sim_input.resolution_id,
+            upscaler_id=sim_input.upscaler_id,
+            frame_gen_id="off",
+            settings=sim_input.settings,
+        )
+        res = simulate(console_input, gpu_override=console, cpu_override=console_cpu)
+        entries.append(
+            GPUComparisonEntry(
+                gpu_id=console.id,
+                label=console.short_name,
+                base_fps=res.base_fps,
+                low_1pct_fps=res.low_1pct_fps,
+                is_selected=False,
+                is_reference_console=True,
+                has_vram_overflow=(res.vram_overflow_gb > 0),
+                notes=console.notes,
+            )
+        )
+
+    entries.sort(key=lambda item: item.base_fps, reverse=True)
+    return entries
+
+
+_VRAM_PRIORITY: tuple[str, ...] = (
+    "vehicle_textures",
+    "texture_quality",
+    "rt_shadows",
+    "rtgi",
+    "reflections",
+    "bvh_quality",
+    "lod_scale",
+    "volumetrics",
+)
+
+_CPU_PRIORITY: tuple[str, ...] = (
+    "ped_vehicle_density",
+    "ai_physics",
+    "bvh_quality",
+    "rt_shadows",
+    "lod_scale",
+    "trees_terrain_grass",
+    "hair_quality",
+    "water_tessellation",
+)
+
+_GPU_PRIORITY: tuple[str, ...] = (
+    "rt_shadows",
+    "reflections",
+    "volumetrics",
+    "rtgi",
+    "trees_terrain_grass",
+    "lod_scale",
+    "raster_shadows",
+    "hair_quality",
+    "water_tessellation",
+    "bvh_quality",
+)
+
+_UPSCALER_STEP_ORDER: tuple[str, ...] = ("native_aa", "native", "quality", "balanced")
+
+
+def _step_down_setting(settings_map: dict[str, str], setting_id: str) -> str | None:
+    """Lower one setting by one quality tier; return new label or None if already minimum."""
+    definition = SETTING_BY_ID[setting_id]
+    current = settings_map.get(setting_id, definition.default_option)
+    labels = definition.option_labels()
+    if current not in labels:
+        return None
+    idx = labels.index(current)
+    if idx <= 0:
+        return None
+    new_label = labels[idx - 1]
+    settings_map[setting_id] = new_label
+    return new_label
+
+
+def auto_optimize_for_60_fps(sim_input: SimulationInput, target_fps: float = 60.0) -> AutoOptimizeResult:
+    """Intelligently lower only settings causing the active bottleneck toward 60 Base FPS."""
+    working_settings = dict(sim_input.settings)
+    working_upscaler = sim_input.upscaler_id
+    changed: list[str] = []
+
+    def _current_sim() -> SimulationResult:
+        return simulate(
+            SimulationInput(
+                gpu_id=sim_input.gpu_id,
+                cpu_id=sim_input.cpu_id,
+                ram_gb=sim_input.ram_gb,
+                ram_speed_id=sim_input.ram_speed_id,
+                rebar_enabled=sim_input.rebar_enabled,
+                gpu_oc_percent=sim_input.gpu_oc_percent,
+                storage_type=sim_input.storage_type,
+                is_laptop_mode=sim_input.is_laptop_mode,
+                resolution_id=sim_input.resolution_id,
+                upscaler_id=working_upscaler,
+                frame_gen_id=sim_input.frame_gen_id,
+                settings=working_settings,
+            )
+        )
+
+    res = _current_sim()
+
+    # Step 1: Clear VRAM or RAM/Unified overflow first.
+    for _ in range(24):
+        if res.vram_overflow_gb <= 0 and res.ram_overflow_gb <= 0:
+            break
+        order = (
+            ("ped_vehicle_density",) + _VRAM_PRIORITY
+            if res.ram_overflow_gb > 0
+            else _VRAM_PRIORITY
+        )
+        progressed = False
+        for sid in order:
+            old_val = working_settings.get(sid, SETTING_BY_ID[sid].default_option)
+            new_val = _step_down_setting(working_settings, sid)
+            if new_val is not None:
+                changed.append(f"{SETTING_BY_ID[sid].name}: {old_val} -> {new_val}")
+                progressed = True
+                break
+        if not progressed:
+            break
+        res = _current_sim()
+
+    # Step 2: Iteratively trim settings targeting whichever ceiling is limiting FPS.
+    for _ in range(40):
+        if res.base_fps >= target_fps:
+            break
+        if res.raw_cpu_fps <= res.raw_gpu_fps * 1.05:
+            priority = _CPU_PRIORITY
+        else:
+            priority = _GPU_PRIORITY
+
+        progressed = False
+        for sid in priority:
+            old_val = working_settings.get(sid, SETTING_BY_ID[sid].default_option)
+            new_val = _step_down_setting(working_settings, sid)
+            if new_val is not None:
+                changed.append(f"{SETTING_BY_ID[sid].name}: {old_val} -> {new_val}")
+                progressed = True
+                break
+        if not progressed:
+            break
+        res = _current_sim()
+
+    # Step 3: If GPU is still capping below 60 FPS, step Upscaler up to Balanced (never touch Res/FG).
+    while res.base_fps < target_fps and res.raw_gpu_fps < res.raw_cpu_fps * 1.15:
+        if working_upscaler in ("balanced", "performance"):
+            break
+        if working_upscaler in ("native", "native_aa"):
+            next_upscaler = "quality"
+        elif working_upscaler == "quality":
+            next_upscaler = "balanced"
+        else:
+            break
+        changed.append(
+            f"Upscaler: {UPSCALER_BY_ID[working_upscaler].generic_label} -> "
+            f"{UPSCALER_BY_ID[next_upscaler].generic_label}"
+        )
+        working_upscaler = next_upscaler
+        res = _current_sim()
+
+    reached = res.base_fps >= target_fps
+    if not changed and reached:
+        summary_en = f"Already achieving {res.base_fps:.1f} Base FPS — no downgrades needed."
+        summary_fa = f"در حال حاضر به {res.base_fps:.1f} فریم پایه رسیده‌اید؛ نیازی به کاهش تنظیمات نیست."
+    elif reached:
+        summary_en = (
+            f"Reached {res.base_fps:.1f} Base FPS with {len(changed)} targeted adjustment(s)."
+        )
+        summary_fa = (
+            f"با {len(changed)} تغییر هدفمند روی گلوگاه اصلی به {res.base_fps:.1f} فریم پایه رسیدید."
+        )
+    else:
+        summary_en = (
+            f"Maximized to {res.base_fps:.1f} Base FPS ({len(changed)} adjustment(s)); "
+            f"hardware/resolution cap prevents 60 Base FPS without lowering Resolution or enabling FG."
+        )
+        summary_fa = (
+            f"بیشینه فریم به {res.base_fps:.1f} فریم پایه رسید ({len(changed)} تغییر)؛ "
+            "سقف سخت‌افزار/رزولوشن اجازه ۶۰ فریم پایه بدون کاهش رزولوشن یا Frame Gen را نمی‌دهد."
+        )
+
+    return AutoOptimizeResult(
+        settings=working_settings,
+        upscaler_id=working_upscaler,
+        changed_items=tuple(changed),
+        reached_target=reached,
+        resulting_base_fps=res.base_fps,
+        summary_en=summary_en,
+        summary_fa=summary_fa,
+    )
+
+
+================================================================================
+FILE: main.py
+================================================================================
+"""Entry point for the GTA VI Hardware & FPS Simulator."""
+
+from __future__ import annotations
+
+import sys
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
+
+from ui.main_window import MainWindow
+
+
+def main() -> int:
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+    app = QApplication(sys.argv)
+    app.setApplicationName("GTA VI Hardware & FPS Simulator")
+    window = MainWindow()
+    window.show()
+    return app.exec()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+================================================================================
+FILE: requirements.txt
+================================================================================
+PySide6>=6.7.0
+pytest>=8.0.0
+
+
+================================================================================
+FILE: tests/__init__.py
+================================================================================
+"""Unit tests for the GTA VI Hardware & FPS Simulator."""
+
+
+================================================================================
+FILE: tests/test_predictor.py
+================================================================================
+"""Calibration and behavioral tests for engine.predictor."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+from data.settings_db import SETTINGS_PRESET_BY_ID, default_settings_map
+from engine.predictor import (
+    SimulationInput,
+    auto_optimize_for_60_fps,
+    compare_all_gpus,
+    simulate,
+)
+
+
+def test_calibration_desktop_1440p_xess_quality_ps5() -> None:
+    """13400F + Arc B580 (ReBAR ON) + 32GB DDR5-4800 | 1440p XeSS Quality | PS5 Settings."""
+    sim_input = SimulationInput(
+        gpu_id="arc_b580",
+        cpu_id="i5_13400f",
+        ram_gb=32,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        resolution_id="1440p",
+        upscaler_id="quality",
+        frame_gen_id="off",
+        settings=SETTINGS_PRESET_BY_ID["ps5_xsx"].values,
+    )
+    res = simulate(sim_input)
+    assert 48.0 <= res.base_fps <= 58.0
+    assert 36.0 <= res.low_1pct_fps <= 42.0
+    assert res.vram_overflow_gb == 0.0
+
+
+def test_calibration_desktop_900p_native_aa_sweet_spot() -> None:
+    """13400F + Arc B580 (ReBAR ON) + 32GB DDR5-4800 | 900p Native AA | Sweet Spot."""
+    sweet = SETTINGS_PRESET_BY_ID["sweet_spot_900p"]
+    sim_input = SimulationInput(
+        gpu_id="arc_b580",
+        cpu_id="i5_13400f",
+        ram_gb=32,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        resolution_id=sweet.resolution_id or "900p",
+        upscaler_id=sweet.upscaler_id or "native_aa",
+        frame_gen_id="off",
+        settings=sweet.values,
+    )
+    res = simulate(sim_input)
+    assert 48.0 <= res.base_fps <= 58.0
+    assert 38.0 <= res.low_1pct_fps <= 44.0
+
+
+def test_calibration_rtx4060_1440p_ultra_vram_overflow() -> None:
+    """13400F + RTX 4060 (8GB) + 32GB DDR5-4800 | 1440p | All Ultra -> 8GB VRAM Overflow."""
+    sim_input = SimulationInput(
+        gpu_id="rtx_4060",
+        cpu_id="i5_13400f",
+        ram_gb=32,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        resolution_id="1440p",
+        upscaler_id="native",
+        frame_gen_id="off",
+        settings=SETTINGS_PRESET_BY_ID["all_ultra"].values,
+    )
+    res = simulate(sim_input)
+    assert res.vram_overflow_gb > 2.0
+    assert res.primary_bottleneck == "VRAM Overflow"
+    assert res.low_1pct_fps < 15.0
+    assert any(w.code == "vram_overflow" for w in res.warnings)
+
+
+def test_calibration_9800x3d_5090_4k_dlss_quality_ultra_mfg4x() -> None:
+    """9800X3D + RTX 5090 + 32GB DDR5-6000 | 4K DLSS Quality | All Ultra -> ~75-90 Base, 200+ MFG 4x."""
+    sim_input = SimulationInput(
+        gpu_id="rtx_5090",
+        cpu_id="ryzen_9800x3d",
+        ram_gb=32,
+        ram_speed_id="ddr5_6000",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        resolution_id="4k",
+        upscaler_id="quality",
+        frame_gen_id="4x",
+        settings=SETTINGS_PRESET_BY_ID["all_ultra"].values,
+    )
+    res = simulate(sim_input)
+    assert 75.0 <= res.base_fps <= 90.0
+    assert res.effective_fg_id == "4x"
+    assert res.fg_fps >= 200.0
+
+
+def test_calibration_laptop_arc140v_series_s_vs_1080p_medium() -> None:
+    """Laptop (Ultra 7 256V + Arc 140V + 16GB Shared) | 720p Series S vs 1080p Medium."""
+    series_s_input = SimulationInput(
+        gpu_id="arc_140v",
+        cpu_id="ultra_7_256v",
+        ram_gb=16,
+        ram_speed_id="lpddr5x_8533",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=True,
+        resolution_id="720p",
+        upscaler_id="native",
+        frame_gen_id="off",
+        settings=SETTINGS_PRESET_BY_ID["series_s"].values,
+    )
+    res_720 = simulate(series_s_input)
+    assert 24.0 <= res_720.base_fps <= 32.0
+    assert res_720.is_unified_pool is True
+    assert res_720.vram_overflow_gb == 0.0
+
+    # 1080p Medium textures/RTGI/volumetrics on 16GB shared pool -> 12-18 FPS + Unified Overflow Warning
+    medium_settings = default_settings_map()
+    medium_settings["texture_quality"] = "Medium"
+    medium_settings["volumetrics"] = "Medium"
+    medium_settings["ped_vehicle_density"] = "High"
+    input_1080 = SimulationInput(
+        gpu_id="arc_140v",
+        cpu_id="ultra_7_256v",
+        ram_gb=16,
+        ram_speed_id="lpddr5x_8533",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=True,
+        resolution_id="1080p",
+        upscaler_id="native",
+        frame_gen_id="off",
+        settings=medium_settings,
+    )
+    res_1080 = simulate(input_1080)
+    assert 12.0 <= res_1080.base_fps <= 18.0
+    assert res_1080.vram_overflow_gb > 0.0
+    assert any(w.code == "unified_overflow" for w in res_1080.warnings)
+
+
+def test_arc_b580_rebar_off_penalty_and_mfg_fallback() -> None:
+    """Disabling ReBAR on Arc B580 severely hurts CPU FPS, and MFG falls back to 2x FG."""
+    base_input = SimulationInput(
+        gpu_id="arc_b580",
+        cpu_id="i5_13400f",
+        ram_gb=32,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        resolution_id="1080p",
+        upscaler_id="quality",
+        frame_gen_id="4x",
+        settings=default_settings_map(),
+    )
+    res_on = simulate(base_input)
+    res_off = simulate(replace(base_input, rebar_enabled=False))
+    assert res_on.effective_fg_id == "2x"
+    assert res_on.fg_fallback_note is not None
+    assert res_off.raw_cpu_fps < res_on.raw_cpu_fps * 0.85
+    assert any(w.code == "arc_no_rebar" for w in res_off.warnings)
+
+
+def test_auto_optimize_targets_60_fps_smartly() -> None:
+    """Auto-Optimize relieves the CPU bottleneck on 13400F + B580 to achieve 60 Base FPS."""
+    sim_input = SimulationInput(
+        gpu_id="arc_b580",
+        cpu_id="i5_13400f",
+        ram_gb=32,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        resolution_id="1440p",
+        upscaler_id="quality",
+        frame_gen_id="off",
+        settings=default_settings_map(),
+    )
+    initial = simulate(sim_input)
+    assert initial.base_fps < 60.0
+
+    opt = auto_optimize_for_60_fps(sim_input, target_fps=60.0)
+    assert opt.reached_target is True
+    assert opt.resulting_base_fps >= 60.0
+    assert opt.settings["ped_vehicle_density"] != "High"
+    assert opt.upscaler_id == "quality"
+
+
+def test_compare_all_gpus_includes_all_gpus_and_consoles() -> None:
+    """Multi-GPU chart returns 9 GPUs plus PS5 and PS5 Pro reference entries."""
+    sim_input = SimulationInput(
+        gpu_id="arc_b580",
+        cpu_id="i5_13400f",
+        ram_gb=32,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        resolution_id="1440p",
+        upscaler_id="quality",
+        frame_gen_id="off",
+        settings=default_settings_map(),
+    )
+    entries = compare_all_gpus(sim_input)
+    assert len(entries) == 11
+    assert sum(1 for e in entries if e.is_selected) == 1
+    assert sum(1 for e in entries if e.is_reference_console) == 2
+
+
+================================================================================
+FILE: tests/test_ui_smoke.py
+================================================================================
+"""Offscreen PySide6 smoke tests for MainWindow wiring and live updates."""
+
+from __future__ import annotations
+
+import os
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtWidgets import QApplication
+
+from ui.main_window import MainWindow
+
+
+@pytest.fixture(scope="module")
+def qapp() -> QApplication:
+    app = QApplication.instance()
+    if isinstance(app, QApplication):
+        return app
+    return QApplication([])
+
+
+def test_main_window_presets_and_live_updates(qapp: QApplication) -> None:
+    window = MainWindow()
+    window.resize(1440, 880)
+    window.show()
+    qapp.processEvents()
+
+    # Initial Desktop preset -> ~50-56 Base FPS
+    initial_fps = float(window._hero_card._avg_value.text())
+    assert 48.0 <= initial_fps <= 58.0
+
+    # Switch to High-End (9800X3D + 5090) and verify MFG 4x unlocks
+    window._apply_hardware_preset("high_end")
+    qapp.processEvents()
+    assert window._fg_pills._buttons["4x"].isEnabled() is True
+    window._fg_pills.set_selected("4x")
+    window._fg_pills.changed.emit("4x")
+    qapp.processEvents()
+    assert float(window._hero_card._fg_value.text()) >= 200.0
+
+    # Switch back to Laptop preset -> MFG 4x auto-falls back and disables
+    window._apply_hardware_preset("my_laptop")
+    qapp.processEvents()
+    assert window._fg_pills._buttons["4x"].isEnabled() is False
+    assert window._fg_pills.current_id() == "2x"
+    assert "Unified" in window._vram_bar._title
+
+    # Desktop preset + Auto-Optimize -> reaches >= 60 Base FPS and enables Undo
+    window._apply_hardware_preset("my_desktop")
+    window._apply_settings_preset("ps5_xsx")
+    window._fg_pills.set_selected("off")
+    window._fg_pills.changed.emit("off")
+    qapp.processEvents()
+    window._on_auto_optimize()
+    qapp.processEvents()
+    assert float(window._hero_card._avg_value.text()) >= 60.0
+    assert window._undo_btn.isVisible() is True
+
+    # Undo restores original < 60 Base FPS
+    window._on_undo_optimize()
+    qapp.processEvents()
+    assert float(window._hero_card._avg_value.text()) < 60.0
+
+    # Toggle EN / Persian language
+    window._lang_btn.click()
+    qapp.processEvents()
+    assert window._lang == "fa"
+    window._lang_btn.click()
+    qapp.processEvents()
+    assert window._lang == "en"
+
+    window.close()
+
+
+================================================================================
+FILE: ui/__init__.py
+================================================================================
+"""Vice City Glassmorphic PySide6 UI components."""
+
+
+================================================================================
+FILE: ui/main_window.py
+================================================================================
+"""3-column responsive Glassmorphic dashboard for the GTA VI Hardware & FPS Simulator."""
+
+from __future__ import annotations
+
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtGui import (
+    QColor,
+    QLinearGradient,
+    QPainter,
+    QPaintEvent,
+    QRadialGradient,
+)
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSlider,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
+
+from data.hardware_db import (
+    CPU_BY_ID,
+    CPUS,
+    GPU_BY_ID,
+    GPUS,
+    HARDWARE_PRESETS,
+    PRESET_BY_ID,
+    RAM_CAPACITIES_GB,
+    RAM_SPEED_BY_ID,
+    RAM_SPEEDS,
+    STORAGE_OPTIONS,
+    StorageType,
+    get_platform_compatibility_notes,
+)
+from data.settings_db import (
+    FRAME_GEN_MODES,
+    RESOLUTIONS,
+    SETTING_CATEGORIES,
+    SETTINGS,
+    SETTINGS_PRESET_BY_ID,
+    SETTINGS_PRESETS,
+    UPSCALERS,
+    default_settings_map,
+)
+from engine.predictor import (
+    SimulationInput,
+    auto_optimize_for_60_fps,
+    compare_all_gpus,
+    simulate,
+)
+from ui.styles import (
+    BG_BOTTOM,
+    BG_TOP,
+    CYAN,
+    EMERALD,
+    GLOBAL_STYLESHEET,
+    MAGENTA,
+    VIOLET,
+    apply_windows_backdrop,
+)
+from ui.widgets import (
+    BottleneckDiagnosisBox,
+    GlassCard,
+    HeroTelemetryCard,
+    MultiGPUComparisonChart,
+    NeonMeterBar,
+    SegmentedPills,
+    SettingRow,
+)
+
+
+class ViceCityBackdropWidget(QWidget):
+    """Root container painting the deep Vice City dark gradient & ambient neon glows."""
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+        base_grad = QLinearGradient(0, 0, rect.width(), rect.height())
+        base_grad.setColorAt(0.0, QColor(BG_TOP))
+        base_grad.setColorAt(0.55, QColor("#111022"))
+        base_grad.setColorAt(1.0, QColor(BG_BOTTOM))
+        painter.fillRect(rect, base_grad)
+
+        # Ambient Vice City neon cyan glow (top-left)
+        cyan_glow = QRadialGradient(QPointF(rect.width() * 0.12, rect.height() * 0.14), rect.width() * 0.42)
+        cyan_glow.setColorAt(0.0, QColor(0, 240, 255, 36))
+        cyan_glow.setColorAt(1.0, QColor(0, 240, 255, 0))
+        painter.fillRect(rect, cyan_glow)
+
+        # Ambient Vice City neon magenta glow (bottom-right)
+        mag_glow = QRadialGradient(QPointF(rect.width() * 0.88, rect.height() * 0.86), rect.width() * 0.46)
+        mag_glow.setColorAt(0.0, QColor(255, 46, 147, 34))
+        mag_glow.setColorAt(1.0, QColor(255, 46, 147, 0))
+        painter.fillRect(rect, mag_glow)
+
+        super().paintEvent(event)
+
+
+class MainWindow(QMainWindow):
+    """Main 3-column live simulator window."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle("GTA VI Hardware & FPS Simulator — Vice City Telemetry")
+        self.resize(1440, 880)
+        self.setMinimumSize(1120, 720)
+        self.setStyleSheet(GLOBAL_STYLESHEET)
+
+        self._suppress_recalc = False
+        self._lang = "en"
+        self._settings_state: dict[str, str] = default_settings_map()
+        self._undo_snapshot: tuple[dict[str, str], str] | None = None
+        self._setting_rows: dict[str, SettingRow] = {}
+        self._category_cards: list[GlassCard] = []
+        self._hw_preset_buttons: dict[str, QPushButton] = {}
+        self._settings_preset_buttons: dict[str, QPushButton] = {}
+
+        root = ViceCityBackdropWidget()
+        root.setObjectName("CentralRoot")
+        self.setCentralWidget(root)
+
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(14, 12, 14, 12)
+        outer.setSpacing(10)
+
+        outer.addWidget(self._build_header())
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(8)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStyleSheet("QSplitter::handle { background: transparent; }")
+
+        left_scroll = self._wrap_scroll(self._build_left_hardware_panel())
+        center_scroll = self._wrap_scroll(self._build_center_settings_panel())
+        right_scroll = self._wrap_scroll(self._build_right_telemetry_panel())
+
+        splitter.addWidget(left_scroll)
+        splitter.addWidget(center_scroll)
+        splitter.addWidget(right_scroll)
+        splitter.setStretchFactor(0, 30)
+        splitter.setStretchFactor(1, 40)
+        splitter.setStretchFactor(2, 30)
+        splitter.setSizes([420, 560, 420])
+
+        outer.addWidget(splitter, 1)
+
+        apply_windows_backdrop(self)
+
+        # Initialize default Desktop preset + 1440p Quality + PS5 Settings
+        self._apply_hardware_preset("my_desktop", recalculate=False)
+        self._res_pills.set_selected("1440p")
+        self._upscaler_pills.set_selected("quality")
+        self._fg_pills.set_selected("off")
+        self._apply_settings_preset("ps5_xsx", recalculate=False)
+        self._sync_gpu_tech_labels()
+        self._recalculate()
+
+    def _wrap_scroll(self, content: QWidget) -> QScrollArea:
+        content.setMinimumWidth(0)
+        scroll = QScrollArea()
+        scroll.setMinimumWidth(0)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(content)
+        return scroll
+
+    @staticmethod
+    def _configure_compact_combo(combo: QComboBox) -> None:
+        combo.setMinimumWidth(0)
+        combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        combo.setMinimumContentsLength(10)
+        combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+    def _build_header(self) -> QWidget:
+        bar = GlassCard()
+        bar._root_layout.setContentsMargins(14, 9, 14, 9)
+        row = QHBoxLayout()
+        row.setSpacing(12)
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(1)
+        title = QLabel("GTA VI  //  HARDWARE & FPS SIMULATOR")
+        title.setObjectName("AppTitle")
+        subtitle = QLabel("Tex2 Console Datamine Engine  •  Real-Time Bottleneck, VRAM Spillover & Multi-GPU Telemetry")
+        subtitle.setObjectName("AppSubtitle")
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        row.addLayout(title_col)
+        row.addStretch(1)
+
+        self._render_scale_chip = QLabel("Render: 1440p • XeSS Quality (0.55x)")
+        self._render_scale_chip.setStyleSheet(
+            f"color: {CYAN}; background-color: rgba(0, 240, 255, 0.10); "
+            "border: 1px solid rgba(0, 240, 255, 0.35); border-radius: 8px; "
+            "padding: 5px 10px; font-size: 11px; font-weight: 700;"
+        )
+        row.addWidget(self._render_scale_chip)
+
+        self._lang_btn = QPushButton("EN / فارسی")
+        self._lang_btn.setObjectName("GhostBtn")
+        self._lang_btn.setCheckable(True)
+        self._lang_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._lang_btn.setToolTip("Toggle Bottleneck Diagnosis & Setting Tooltips between English and Persian")
+        self._lang_btn.clicked.connect(self._toggle_language)
+        row.addWidget(self._lang_btn)
+
+        bar.body_layout.addLayout(row)
+        return bar
+
+    # ------------------------------------------------------------------
+    # LEFT PANEL (~30%): System Hardware Configurator
+    # ------------------------------------------------------------------
+    def _build_left_hardware_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(2, 0, 10, 0)
+        layout.setSpacing(10)
+
+        # Quick Hardware Presets Card
+        presets_card = GlassCard("QUICK HARDWARE PRESETS")
+        for preset in HARDWARE_PRESETS:
+            btn = QPushButton(preset.label)
+            btn.setObjectName("PresetBtn")
+            btn.setMinimumWidth(0)
+            btn.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda _checked=False, pid=preset.id: self._apply_hardware_preset(pid))
+            presets_card.body_layout.addWidget(btn)
+            self._hw_preset_buttons[preset.id] = btn
+        layout.addWidget(presets_card)
+
+        # Core Components Card
+        hw_card = GlassCard("SYSTEM HARDWARE")
+
+        # Laptop Thermal/Unified Mode toggle
+        self._laptop_pills = SegmentedPills(
+            [("desktop", "Desktop Tower"), ("laptop", "Laptop (20-25W)")],
+            selected_id="desktop",
+        )
+        self._laptop_pills.changed.connect(self._on_hardware_changed)
+        hw_card.body_layout.addWidget(self._make_field_label("Form Factor / Thermal Envelope"))
+        hw_card.body_layout.addWidget(self._laptop_pills)
+
+        # GPU Selector
+        hw_card.body_layout.addWidget(self._make_field_label("Graphics Card (GPU)"))
+        self._gpu_combo = QComboBox()
+        self._configure_compact_combo(self._gpu_combo)
+        for gpu in GPUS:
+            self._gpu_combo.addItem(gpu.name, userData=gpu.id)
+        self._gpu_combo.currentIndexChanged.connect(self._on_gpu_changed)
+        hw_card.body_layout.addWidget(self._gpu_combo)
+
+        self._gpu_spec_chip = QLabel()
+        self._gpu_spec_chip.setObjectName("SpecChip")
+        self._gpu_spec_chip.setWordWrap(True)
+        self._gpu_spec_chip.setMinimumWidth(0)
+        hw_card.body_layout.addWidget(self._gpu_spec_chip)
+
+        # CPU Selector
+        hw_card.body_layout.addWidget(self._make_field_label("Processor (CPU)"))
+        self._cpu_combo = QComboBox()
+        self._configure_compact_combo(self._cpu_combo)
+        for cpu in CPUS:
+            self._cpu_combo.addItem(f"{cpu.name} ({cpu.cores_threads})", userData=cpu.id)
+        self._cpu_combo.currentIndexChanged.connect(self._on_hardware_changed)
+        hw_card.body_layout.addWidget(self._cpu_combo)
+
+        self._cpu_spec_chip = QLabel()
+        self._cpu_spec_chip.setObjectName("SpecChip")
+        self._cpu_spec_chip.setWordWrap(True)
+        self._cpu_spec_chip.setMinimumWidth(0)
+        hw_card.body_layout.addWidget(self._cpu_spec_chip)
+
+        # RAM Capacity & Speed
+        hw_card.body_layout.addWidget(self._make_field_label("System RAM Capacity"))
+        self._ram_cap_pills = SegmentedPills(
+            [(str(cap), f"{cap} GB") for cap in RAM_CAPACITIES_GB],
+            selected_id="32",
+        )
+        self._ram_cap_pills.changed.connect(self._on_hardware_changed)
+        hw_card.body_layout.addWidget(self._ram_cap_pills)
+
+        hw_card.body_layout.addWidget(self._make_field_label("RAM Speed / Bandwidth Profile"))
+        self._ram_speed_combo = QComboBox()
+        self._configure_compact_combo(self._ram_speed_combo)
+        for speed in RAM_SPEEDS:
+            self._ram_speed_combo.addItem(speed.name, userData=speed.id)
+        self._ram_speed_combo.currentIndexChanged.connect(self._on_hardware_changed)
+        hw_card.body_layout.addWidget(self._ram_speed_combo)
+
+        self._platform_hint_chip = QLabel()
+        self._platform_hint_chip.setWordWrap(True)
+        self._platform_hint_chip.setStyleSheet(
+            "font-size: 10.5px; color: #FFD166; background-color: rgba(255, 184, 0, 0.10); "
+            "border: 1px solid rgba(255, 184, 0, 0.35); border-radius: 7px; padding: 5px 8px;"
+        )
+        self._platform_hint_chip.setVisible(False)
+        hw_card.body_layout.addWidget(self._platform_hint_chip)
+
+        layout.addWidget(hw_card)
+
+        # Tuning & Platform Toggles Card
+        toggles_card = GlassCard("PLATFORM TUNING & STORAGE")
+
+        toggles_card.body_layout.addWidget(self._make_field_label("Resizable BAR (PCIe ReBAR)"))
+        self._rebar_pills = SegmentedPills(
+            [("on", "ReBAR ON"), ("off", "ReBAR OFF")],
+            selected_id="on",
+        )
+        self._rebar_pills.changed.connect(self._on_hardware_changed)
+        toggles_card.body_layout.addWidget(self._rebar_pills)
+
+        oc_header = QHBoxLayout()
+        oc_header.addWidget(self._make_field_label("GPU Core / Mem Overclock"))
+        oc_header.addStretch(1)
+        self._oc_val_label = QLabel("+0%")
+        self._oc_val_label.setStyleSheet(f"font-size: 11.5px; font-weight: 800; color: {CYAN};")
+        oc_header.addWidget(self._oc_val_label)
+        toggles_card.body_layout.addLayout(oc_header)
+
+        self._oc_slider = QSlider(Qt.Orientation.Horizontal)
+        self._oc_slider.setRange(0, 7)
+        self._oc_slider.setValue(0)
+        self._oc_slider.valueChanged.connect(self._on_oc_changed)
+        toggles_card.body_layout.addWidget(self._oc_slider)
+
+        toggles_card.body_layout.addWidget(self._make_field_label("Storage Drive"))
+        self._storage_pills = SegmentedPills(
+            [(st, st) for st in STORAGE_OPTIONS],
+            selected_id="NVMe Gen4",
+        )
+        self._storage_pills.changed.connect(self._on_hardware_changed)
+        toggles_card.body_layout.addWidget(self._storage_pills)
+
+        layout.addWidget(toggles_card)
+        layout.addStretch(1)
+        return panel
+
+    # ------------------------------------------------------------------
+    # CENTER PANEL (~40%): GTA VI Graphics & Display Settings
+    # ------------------------------------------------------------------
+    def _build_center_settings_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(2, 0, 10, 0)
+        layout.setSpacing(10)
+
+        # Display & Upscaling Card
+        display_card = GlassCard("DISPLAY, UPSCALING & FRAME GENERATION")
+
+        display_card.body_layout.addWidget(self._make_field_label("Target Output Resolution"))
+        self._res_pills = SegmentedPills(
+            [(r.id, r.label) for r in RESOLUTIONS],
+            selected_id="1440p",
+        )
+        self._res_pills.changed.connect(self._on_display_or_setting_changed)
+        display_card.body_layout.addWidget(self._res_pills)
+
+        display_card.body_layout.addWidget(self._make_field_label("Upscaler Quality"))
+        self._upscaler_pills = SegmentedPills(
+            [(u.id, u.generic_label) for u in UPSCALERS],
+            selected_id="quality",
+            max_cols=3,
+        )
+        self._upscaler_pills.changed.connect(self._on_display_or_setting_changed)
+        display_card.body_layout.addWidget(self._upscaler_pills)
+
+        display_card.body_layout.addWidget(self._make_field_label("Frame Generation"))
+        self._fg_pills = SegmentedPills(
+            [(f.id, f.label) for f in FRAME_GEN_MODES],
+            selected_id="off",
+        )
+        self._fg_pills.changed.connect(self._on_display_or_setting_changed)
+        display_card.body_layout.addWidget(self._fg_pills)
+
+        layout.addWidget(display_card)
+
+        # Quick Setting Presets Card
+        presets_card = GlassCard("TEX2 CONSOLE & PC PRESETS")
+        grid_presets = QGridLayout()
+        grid_presets.setSpacing(6)
+        for idx, preset in enumerate(SETTINGS_PRESETS):
+            btn = QPushButton(preset.label)
+            btn.setObjectName("PresetBtn")
+            btn.setMinimumWidth(0)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            btn.setToolTip(preset.description_en)
+            btn.clicked.connect(lambda _c=False, pid=preset.id: self._apply_settings_preset(pid))
+            grid_presets.addWidget(btn, idx // 3, idx % 3)
+            self._settings_preset_buttons[preset.id] = btn
+        presets_card.body_layout.addLayout(grid_presets)
+
+        # Quick expand/collapse controls
+        cat_ctrl_row = QHBoxLayout()
+        cat_ctrl_row.setSpacing(6)
+        cat_hint = QLabel("Click headers to fold • Hover settings for Tex2 notes")
+        cat_hint.setWordWrap(True)
+        cat_hint.setMinimumWidth(0)
+        cat_hint.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        cat_hint.setStyleSheet("font-size: 10px; color: #94A3B8;")
+        cat_ctrl_row.addWidget(cat_hint, 1)
+
+        expand_btn = QPushButton("Expand All")
+        expand_btn.setObjectName("PillBtn")
+        expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        expand_btn.clicked.connect(lambda: self._set_all_categories_collapsed(False))
+        cat_ctrl_row.addWidget(expand_btn)
+
+        collapse_btn = QPushButton("Collapse All")
+        collapse_btn.setObjectName("PillBtn")
+        collapse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        collapse_btn.clicked.connect(lambda: self._set_all_categories_collapsed(True))
+        cat_ctrl_row.addWidget(collapse_btn)
+        presets_card.body_layout.addLayout(cat_ctrl_row)
+
+        layout.addWidget(presets_card)
+
+        # Categorized Graphics Sliders (Accordion Glass Cards)
+        for category in SETTING_CATEGORIES:
+            cat_card = GlassCard(category.upper(), collapsible=True, collapsed=False)
+            cat_settings = [s for s in SETTINGS if s.category == category]
+            for s in cat_settings:
+                row_widget = SettingRow(s, self._settings_state[s.id])
+                row_widget.value_changed.connect(self._on_setting_row_changed)
+                cat_card.body_layout.addWidget(row_widget)
+                self._setting_rows[s.id] = row_widget
+            self._category_cards.append(cat_card)
+            layout.addWidget(cat_card)
+
+        layout.addStretch(1)
+        return panel
+
+    # ------------------------------------------------------------------
+    # RIGHT PANEL (~30%): Live Telemetry, Bottleneck Radar & Multi-GPU Chart
+    # ------------------------------------------------------------------
+    def _build_right_telemetry_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(2, 0, 10, 0)
+        layout.setSpacing(10)
+
+        self._hero_card = HeroTelemetryCard()
+        layout.addWidget(self._hero_card)
+
+        # Component Load & Memory Spillover Meters
+        meters_card = GlassCard("COMPONENT LOAD & MEMORY POOL")
+        self._gpu_load_bar = NeonMeterBar("GPU Core Load")
+        self._rt_load_bar = NeonMeterBar("Ray Tracing Core Load")
+        self._cpu_load_bar = NeonMeterBar("CPU Simulation Load")
+        self._vram_bar = NeonMeterBar("VRAM Footprint")
+        self._ram_bar = NeonMeterBar("System RAM")
+
+        for bar in (
+            self._gpu_load_bar,
+            self._rt_load_bar,
+            self._cpu_load_bar,
+            self._vram_bar,
+            self._ram_bar,
+        ):
+            meters_card.body_layout.addWidget(bar)
+        layout.addWidget(meters_card)
+
+        # Magic Auto-Optimize Card
+        opt_card = GlassCard()
+        opt_row = QHBoxLayout()
+        opt_row.setSpacing(8)
+
+        self._magic_btn = QPushButton("Auto-Optimize for 60 FPS")
+        self._magic_btn.setObjectName("MagicBtn")
+        self._magic_btn.setMinimumWidth(0)
+        self._magic_btn.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self._magic_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._magic_btn.clicked.connect(self._on_auto_optimize)
+        opt_row.addWidget(self._magic_btn, 1)
+
+        self._undo_btn = QPushButton("Undo")
+        self._undo_btn.setObjectName("GhostBtn")
+        self._undo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._undo_btn.setVisible(False)
+        self._undo_btn.clicked.connect(self._on_undo_optimize)
+        opt_row.addWidget(self._undo_btn)
+
+        opt_card.body_layout.addLayout(opt_row)
+
+        self._opt_status_lbl = QLabel()
+        self._opt_status_lbl.setWordWrap(True)
+        self._opt_status_lbl.setVisible(False)
+        self._opt_status_lbl.setStyleSheet(
+            f"font-size: 10.5px; color: {EMERALD}; background-color: rgba(0, 230, 118, 0.08); "
+            "border: 1px solid rgba(0, 230, 118, 0.30); border-radius: 7px; padding: 5px 8px;"
+        )
+        opt_card.body_layout.addWidget(self._opt_status_lbl)
+        layout.addWidget(opt_card)
+
+        # Bottleneck Diagnosis Box
+        self._diagnosis_box = BottleneckDiagnosisBox()
+        layout.addWidget(self._diagnosis_box)
+
+        # Multi-GPU Comparison Chart Card
+        chart_card = GlassCard("LIVE MULTI-GPU COMPARISON (BASE FPS)")
+        legend = QLabel("Selected GPU in Neon Cyan/Pink  •  Console Baselines in Violet  •  Hover bars for 1% Lows")
+        legend.setWordWrap(True)
+        legend.setStyleSheet("font-size: 10px; color: #94A3B8;")
+        chart_card.body_layout.addWidget(legend)
+
+        self._gpu_chart = MultiGPUComparisonChart()
+        chart_card.body_layout.addWidget(self._gpu_chart)
+        layout.addWidget(chart_card)
+
+        layout.addStretch(1)
+        return panel
+
+    # ------------------------------------------------------------------
+    # Event Handlers & Helpers
+    # ------------------------------------------------------------------
+    def _make_field_label(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setObjectName("FieldLabel")
+        return lbl
+
+    def _set_all_categories_collapsed(self, collapsed: bool) -> None:
+        for card in self._category_cards:
+            card.set_collapsed(collapsed)
+
+    def _toggle_language(self) -> None:
+        self._lang = "fa" if self._lang_btn.isChecked() else "en"
+        self._lang_btn.setText("فارسی ✓" if self._lang == "fa" else "EN / فارسی")
+        for row in self._setting_rows.values():
+            row.set_language(self._lang)
+        self._diagnosis_box.set_language(self._lang)
+
+    def _apply_hardware_preset(self, preset_id: str, recalculate: bool = True) -> None:
+        preset = PRESET_BY_ID[preset_id]
+        self._suppress_recalc = True
+        try:
+            self._set_combo_by_data(self._gpu_combo, preset.gpu_id)
+            self._set_combo_by_data(self._cpu_combo, preset.cpu_id)
+            self._ram_cap_pills.set_selected(str(preset.ram_gb))
+            self._set_combo_by_data(self._ram_speed_combo, preset.ram_speed_id)
+            self._rebar_pills.set_selected("on" if preset.rebar_enabled else "off")
+            self._oc_slider.setValue(preset.gpu_oc_percent)
+            self._oc_val_label.setText(f"+{preset.gpu_oc_percent}%")
+            self._storage_pills.set_selected(preset.storage_type)
+            self._laptop_pills.set_selected("laptop" if preset.is_laptop_mode else "desktop")
+            self._sync_gpu_tech_labels()
+            self._highlight_hw_preset(preset_id)
+        finally:
+            self._suppress_recalc = False
+        if recalculate:
+            self._recalculate()
+
+    def _apply_settings_preset(self, preset_id: str, recalculate: bool = True) -> None:
+        preset = SETTINGS_PRESET_BY_ID[preset_id]
+        self._suppress_recalc = True
+        try:
+            self._settings_state = dict(preset.values)
+            for sid, val in self._settings_state.items():
+                if sid in self._setting_rows:
+                    self._setting_rows[sid].set_value(val)
+            if preset.resolution_id:
+                self._res_pills.set_selected(preset.resolution_id)
+            if preset.upscaler_id:
+                self._upscaler_pills.set_selected(preset.upscaler_id)
+            self._undo_snapshot = None
+            self._undo_btn.setVisible(False)
+            self._opt_status_lbl.setVisible(False)
+            self._highlight_settings_preset(preset_id)
+        finally:
+            self._suppress_recalc = False
+        if recalculate:
+            self._recalculate()
+
+    def _on_gpu_changed(self) -> None:
+        if not self._suppress_recalc:
+            self._highlight_hw_preset(None)
+            self._sync_gpu_tech_labels()
+            self._recalculate()
+
+    def _on_hardware_changed(self) -> None:
+        if not self._suppress_recalc:
+            self._highlight_hw_preset(None)
+            self._recalculate()
+
+    def _on_oc_changed(self, value: int) -> None:
+        self._oc_val_label.setText(f"+{value}%")
+        if not self._suppress_recalc:
+            self._highlight_hw_preset(None)
+            self._recalculate()
+
+    def _on_display_or_setting_changed(self) -> None:
+        if not self._suppress_recalc:
+            self._highlight_settings_preset(None)
+            self._recalculate()
+
+    def _on_setting_row_changed(self, setting_id: str, new_value: str) -> None:
+        self._settings_state[setting_id] = new_value
+        if not self._suppress_recalc:
+            self._highlight_settings_preset(None)
+            self._recalculate()
+
+    def _on_auto_optimize(self) -> None:
+        current = self._collect_input()
+        self._undo_snapshot = (dict(self._settings_state), current.upscaler_id)
+
+        opt = auto_optimize_for_60_fps(current, target_fps=60.0)
+        self._suppress_recalc = True
+        try:
+            self._settings_state = dict(opt.settings)
+            for sid, val in self._settings_state.items():
+                if sid in self._setting_rows:
+                    self._setting_rows[sid].set_value(val)
+            self._upscaler_pills.set_selected(opt.upscaler_id)
+            self._highlight_settings_preset(None)
+        finally:
+            self._suppress_recalc = False
+
+        self._undo_btn.setVisible(len(opt.changed_items) > 0)
+        msg = opt.summary_fa if self._lang == "fa" else opt.summary_en
+        if opt.changed_items:
+            preview = "; ".join(opt.changed_items[:4])
+            if len(opt.changed_items) > 4:
+                preview += f" (+{len(opt.changed_items) - 4} more)"
+            msg = f"{msg}\nChanges: {preview}"
+        self._opt_status_lbl.setText(msg)
+        self._opt_status_lbl.setVisible(True)
+        self._recalculate()
+
+    def _on_undo_optimize(self) -> None:
+        if not self._undo_snapshot:
+            return
+        prev_settings, prev_upscaler = self._undo_snapshot
+        self._undo_snapshot = None
+        self._suppress_recalc = True
+        try:
+            self._settings_state = dict(prev_settings)
+            for sid, val in self._settings_state.items():
+                if sid in self._setting_rows:
+                    self._setting_rows[sid].set_value(val)
+            self._upscaler_pills.set_selected(prev_upscaler)
+        finally:
+            self._suppress_recalc = False
+        self._undo_btn.setVisible(False)
+        self._opt_status_lbl.setVisible(False)
+        self._recalculate()
+
+    def _sync_gpu_tech_labels(self) -> None:
+        gpu_id = self._gpu_combo.currentData()
+        gpu = GPU_BY_ID[gpu_id]
+
+        for u in UPSCALERS:
+            self._upscaler_pills.update_label(u.id, u.display_label(gpu.upscaler_brand))
+
+        # Disable MFG 3x/4x on GPUs without RTX 50-series Multi-Frame Gen
+        mfg_tip = "" if gpu.supports_mfg else f"Multi-Frame Gen requires RTX 50-series ({gpu.name} supports up to 2x FG)."
+        self._fg_pills.set_option_enabled("3x", gpu.supports_mfg, mfg_tip)
+        self._fg_pills.set_option_enabled("4x", gpu.supports_mfg, mfg_tip)
+        self._fg_pills.set_option_enabled("2x", gpu.supports_fg, "")
+
+        cur_fg = self._fg_pills.current_id()
+        if cur_fg in ("3x", "4x") and not gpu.supports_mfg:
+            self._fg_pills.set_selected("2x")
+
+    def _collect_input(self) -> SimulationInput:
+        storage_str = self._storage_pills.current_id()
+        storage: StorageType = "SATA / HDD" if storage_str == "SATA / HDD" else "NVMe Gen4"
+        return SimulationInput(
+            gpu_id=self._gpu_combo.currentData(),
+            cpu_id=self._cpu_combo.currentData(),
+            ram_gb=int(self._ram_cap_pills.current_id()),
+            ram_speed_id=self._ram_speed_combo.currentData(),
+            rebar_enabled=(self._rebar_pills.current_id() == "on"),
+            gpu_oc_percent=int(self._oc_slider.value()),
+            storage_type=storage,
+            is_laptop_mode=(self._laptop_pills.current_id() == "laptop"),
+            resolution_id=self._res_pills.current_id(),
+            upscaler_id=self._upscaler_pills.current_id(),
+            frame_gen_id=self._fg_pills.current_id(),
+            settings=dict(self._settings_state),
+        )
+
+    def _recalculate(self) -> None:
+        sim_input = self._collect_input()
+        gpu = GPU_BY_ID[sim_input.gpu_id]
+        cpu = CPU_BY_ID[sim_input.cpu_id]
+        ram_speed = RAM_SPEED_BY_ID[sim_input.ram_speed_id]
+
+        # Hardware info chips
+        vram_txt = "16 GB Shared Pool" if gpu.is_unified_memory else f"{gpu.vram_gb:.0f} GB VRAM"
+        self._gpu_spec_chip.setText(
+            f"{vram_txt}  •  {gpu.bandwidth_gbps:.0f} GB/s  •  PCIe {gpu.pcie_lanes}  •  "
+            f"Raster {gpu.raster_score:.0f} / RT {gpu.rt_score:.0f}  •  {gpu.fg_label}"
+        )
+        self._cpu_spec_chip.setText(
+            f"Sim Score {cpu.gaming_score:.0f}  •  {cpu.cores_threads}  •  {cpu.architecture_notes}"
+        )
+
+        notes = get_platform_compatibility_notes(gpu, cpu, ram_speed, sim_input.is_laptop_mode)
+        if notes:
+            self._platform_hint_chip.setText(" | ".join(notes))
+            self._platform_hint_chip.setVisible(True)
+        else:
+            self._platform_hint_chip.setVisible(False)
+
+        result = simulate(sim_input)
+        comparisons = compare_all_gpus(sim_input)
+
+        # Header render scale badge
+        res_lbl = next((r.label for r in RESOLUTIONS if r.id == sim_input.resolution_id), sim_input.resolution_id)
+        up_obj = next((u for u in UPSCALERS if u.id == sim_input.upscaler_id), UPSCALERS[0])
+        self._render_scale_chip.setText(
+            f"Render: {res_lbl} • {up_obj.display_label(gpu.upscaler_brand)} ({result.effective_res_factor:.2f}x)"
+        )
+
+        # Right column telemetry updates
+        self._hero_card.update_telemetry(result)
+        self._gpu_load_bar.set_percentage("GPU Core Load", result.gpu_load_pct, VIOLET)
+        self._rt_load_bar.set_percentage("Ray Tracing Core Load", result.rt_load_pct, MAGENTA)
+        self._cpu_load_bar.set_percentage("CPU Simulation Load", result.cpu_load_pct, CYAN)
+
+        if result.is_unified_pool:
+            self._vram_bar.set_memory(
+                "Unified Memory Pool (Shared OS+CPU+GPU)",
+                result.unified_pool_used_gb,
+                result.unified_pool_total_gb,
+                result.vram_overflow_gb,
+            )
+            self._ram_bar.set_memory(
+                "Estimated VRAM Share (Included in Pool)",
+                result.vram_used_gb,
+                result.unified_pool_total_gb,
+                0.0,
+            )
+        else:
+            self._vram_bar.set_memory(
+                "Dedicated VRAM Footprint",
+                result.vram_used_gb,
+                result.vram_total_gb,
+                result.vram_overflow_gb,
+            )
+            self._ram_bar.set_memory(
+                "System RAM Footprint",
+                result.ram_used_gb,
+                result.ram_total_gb,
+                result.ram_overflow_gb,
+            )
+
+        self._diagnosis_box.update_diagnosis(result)
+        self._gpu_chart.set_entries(comparisons)
+
+    def _set_combo_by_data(self, combo: QComboBox, target_id: str) -> None:
+        for i in range(combo.count()):
+            if combo.itemData(i) == target_id:
+                combo.setCurrentIndex(i)
+                return
+
+    def _highlight_hw_preset(self, active_id: str | None) -> None:
+        for pid, btn in self._hw_preset_buttons.items():
+            btn.setProperty("active", "true" if pid == active_id else "false")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+    def _highlight_settings_preset(self, active_id: str | None) -> None:
+        for pid, btn in self._settings_preset_buttons.items():
+            btn.setProperty("active", "true" if pid == active_id else "false")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+
+================================================================================
+FILE: ui/styles.py
+================================================================================
+"""Vice City dark glassmorphism color tokens, DWM helpers, and QSS stylesheets."""
+
+from __future__ import annotations
+
+import ctypes
+import logging
+import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QWidget
+
+logger = logging.getLogger(__name__)
+
+# Core Vice City Neon & Glass Palette
+BG_TOP = "#0B0E17"
+BG_BOTTOM = "#18122B"
+
+CYAN = "#00F0FF"
+MAGENTA = "#FF2E93"
+AMBER = "#FFB800"
+EMERALD = "#00E676"
+CRIMSON = "#FF4D6D"
+VIOLET = "#A78BFA"
+TEXT_PRIMARY = "#F1F5F9"
+TEXT_SECONDARY = "#94A3B8"
+TEXT_MUTED = "#64748B"
+
+BADGE_COLORS: dict[str, tuple[str, str]] = {
+    "CPU": ("#00F0FF", "rgba(0, 240, 255, 0.14)"),
+    "GPU": ("#A78BFA", "rgba(167, 139, 250, 0.16)"),
+    "RT": ("#FF2E93", "rgba(255, 46, 147, 0.16)"),
+    "VRAM": ("#FFB800", "rgba(255, 184, 0, 0.15)"),
+    "RAM": ("#00E676", "rgba(0, 230, 118, 0.14)"),
+}
+
+
+def apply_windows_backdrop(widget: QWidget) -> None:
+    """Enable Windows 11 dark titlebar & Mica/Acrylic backdrop when supported."""
+    if sys.platform != "win32":
+        return
+    try:
+        hwnd = int(widget.winId())
+        dwmapi = ctypes.windll.dwmapi
+        # DWMWA_USE_IMMERSIVE_DARK_MODE (20)
+        dark_mode = ctypes.c_int(1)
+        dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            20,
+            ctypes.byref(dark_mode),
+            ctypes.sizeof(dark_mode),
+        )
+        # DWMWA_CAPTION_COLOR (35): match dark Vice City header (#0B0E17 -> COLORREF 0x00170E0B)
+        caption_color = ctypes.c_int(0x00170E0B)
+        dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            35,
+            ctypes.byref(caption_color),
+            ctypes.sizeof(caption_color),
+        )
+        # DWMWA_SYSTEMBACKDROP_TYPE (38): 2 = Mica, 3 = Acrylic
+        backdrop_type = ctypes.c_int(2)
+        dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            38,
+            ctypes.byref(backdrop_type),
+            ctypes.sizeof(backdrop_type),
+        )
+    except (OSError, AttributeError, ValueError) as exc:
+        # Safe fallback on Windows 10, older builds, or headless/offscreen runs.
+        logger.debug("DWM backdrop unavailable: %s", exc)
+
+
+def fps_accent_color(fps: float) -> str:
+    """Return Vice City status color for a given FPS threshold."""
+    if fps >= 60.0:
+        return EMERALD
+    if fps >= 45.0:
+        return CYAN
+    if fps >= 30.0:
+        return AMBER
+    return CRIMSON
+
+
+GLOBAL_STYLESHEET = """
+QMainWindow, QWidget#CentralRoot {
+    background: transparent;
+    color: #F1F5F9;
+    font-family: "Segoe UI", "Inter", sans-serif;
+    font-size: 12px;
+}
+
+QLabel {
+    color: #F1F5F9;
+    background: transparent;
+}
+
+QLabel#AppTitle {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    color: #FFFFFF;
+}
+
+QLabel#AppSubtitle {
+    font-size: 11px;
+    color: #94A3B8;
+}
+
+QLabel#SectionTitle {
+    font-size: 13px;
+    font-weight: 700;
+    color: #FFFFFF;
+    letter-spacing: 0.4px;
+}
+
+QLabel#FieldLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: #CBD5E1;
+}
+
+QLabel#SpecChip {
+    font-size: 10.5px;
+    color: #94A3B8;
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 7px;
+    padding: 4px 8px;
+}
+
+QFrame#GlassCard {
+    background-color: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 14px;
+}
+
+QFrame#GlassCard:hover {
+    border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+QFrame#SettingRow {
+    background-color: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+}
+
+QFrame#SettingRow:hover {
+    background-color: rgba(255, 255, 255, 0.065);
+    border: 1px solid rgba(0, 240, 255, 0.30);
+}
+
+QFrame#HeroTile {
+    background-color: rgba(11, 14, 23, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 12px;
+}
+
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QScrollArea > QWidget > QWidget {
+    background: transparent;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 7px;
+    margin: 2px;
+}
+
+QScrollBar::handle:vertical {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    min-height: 28px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: rgba(0, 240, 255, 0.45);
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+    height: 0px;
+}
+
+QComboBox {
+    background-color: rgba(15, 20, 34, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 9px;
+    padding: 5px 10px;
+    color: #F8FAFC;
+    font-weight: 600;
+    min-height: 20px;
+    min-width: 0px;
+}
+
+QComboBox:hover {
+    border: 1px solid rgba(0, 240, 255, 0.55);
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 24px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #121726;
+    border: 1px solid rgba(0, 240, 255, 0.45);
+    border-radius: 8px;
+    selection-background-color: rgba(0, 240, 255, 0.22);
+    selection-color: #FFFFFF;
+    color: #E2E8F0;
+    padding: 4px;
+    outline: none;
+}
+
+QPushButton#PresetBtn {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    padding: 5px 8px;
+    color: #E2E8F0;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 0px;
+}
+
+QPushButton#PresetBtn:hover {
+    background-color: rgba(0, 240, 255, 0.14);
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: #FFFFFF;
+}
+
+QPushButton#PresetBtn[active="true"] {
+    background-color: rgba(0, 240, 255, 0.22);
+    border: 1px solid #00F0FF;
+    color: #FFFFFF;
+}
+
+QPushButton#MagicBtn {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #00C2FF, stop:1 #FF2E93);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 10px;
+    padding: 9px 14px;
+    color: #FFFFFF;
+    font-size: 12.5px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+}
+
+QPushButton#MagicBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2CF2FF, stop:1 #FF52A8);
+    border: 1px solid #FFFFFF;
+}
+
+QPushButton#MagicBtn:pressed {
+    padding-top: 10px;
+    padding-bottom: 8px;
+}
+
+QPushButton#GhostBtn {
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    padding: 8px 12px;
+    color: #E2E8F0;
+    font-size: 11.5px;
+    font-weight: 600;
+}
+
+QPushButton#GhostBtn:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.32);
+}
+
+QPushButton#AccordionHeader {
+    background: transparent;
+    border: none;
+    text-align: left;
+    color: #FFFFFF;
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 2px 0px;
+}
+
+QPushButton#PillBtn {
+    background-color: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 7px;
+    padding: 4px 6px;
+    color: #CBD5E1;
+    font-size: 10.5px;
+    font-weight: 600;
+    min-width: 0px;
+}
+
+QPushButton#PillBtn:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    color: #FFFFFF;
+}
+
+QPushButton#PillBtn:checked {
+    background-color: rgba(0, 240, 255, 0.22);
+    border: 1px solid #00F0FF;
+    color: #FFFFFF;
+}
+
+QPushButton#PillBtn:disabled {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: #475569;
+}
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.10);
+    border-radius: 3px;
+}
+
+QSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #00F0FF, stop:1 #FF2E93);
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    background: #FFFFFF;
+    border: 2px solid #00F0FF;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 8px;
+}
+
+QToolTip {
+    background-color: #111625;
+    color: #F1F5F9;
+    border: 1px solid #00F0FF;
+    border-radius: 6px;
+    padding: 6px 9px;
+    font-size: 11.5px;
+}
+"""
+
+
+================================================================================
+FILE: ui/widgets.py
+================================================================================
+"""Reusable Vice City Glassmorphic PySide6 widgets and custom QPainter charts."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QLinearGradient,
+    QPainter,
+    QPaintEvent,
+    QPen,
+)
+from PySide6.QtWidgets import (
+    QButtonGroup,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QToolTip,
+    QVBoxLayout,
+    QWidget,
+)
+
+from data.settings_db import SettingDefinition
+from engine.predictor import GPUComparisonEntry, SimulationResult, WarningMessage
+from ui.styles import (
+    AMBER,
+    BADGE_COLORS,
+    CRIMSON,
+    CYAN,
+    EMERALD,
+    MAGENTA,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    VIOLET,
+    fps_accent_color,
+)
+
+
+class GlassCard(QFrame):
+    """Translucent glass panel with crisp border and optional collapsible body."""
+
+    def __init__(
+        self,
+        title: str = "",
+        collapsible: bool = False,
+        collapsed: bool = False,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("GlassCard")
+        self._collapsible = collapsible
+        self._collapsed = collapsed
+        self._base_title = title
+
+        self._root_layout = QVBoxLayout(self)
+        self._root_layout.setContentsMargins(14, 12, 14, 12)
+        self._root_layout.setSpacing(10)
+
+        self._header_row = QHBoxLayout()
+        self._header_row.setSpacing(8)
+        self._title_btn: QPushButton | None = None
+        self._title_label: QLabel | None = None
+
+        if title:
+            if collapsible:
+                escaped = title.replace("&", "&&")
+                btn = QPushButton(f"▾  {escaped}")
+                btn.setObjectName("AccordionHeader")
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn.clicked.connect(self.toggle_collapsed)
+                self._title_btn = btn
+                self._header_row.addWidget(btn)
+            else:
+                lbl = QLabel(title)
+                lbl.setObjectName("SectionTitle")
+                self._title_label = lbl
+                self._header_row.addWidget(lbl)
+
+            self._header_row.addStretch(1)
+            self._root_layout.addLayout(self._header_row)
+
+        self._body_container = QWidget()
+        self.body_layout = QVBoxLayout(self._body_container)
+        self.body_layout.setContentsMargins(0, 0, 0, 0)
+        self.body_layout.setSpacing(8)
+        self._root_layout.addWidget(self._body_container)
+
+        if self._collapsed:
+            self._apply_collapsed_state()
+
+    def add_header_widget(self, widget: QWidget) -> None:
+        self._header_row.addWidget(widget)
+
+    def toggle_collapsed(self) -> None:
+        if not self._collapsible:
+            return
+        self._collapsed = not self._collapsed
+        self._apply_collapsed_state()
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        if not self._collapsible:
+            return
+        self._collapsed = collapsed
+        self._apply_collapsed_state()
+
+    def _apply_collapsed_state(self) -> None:
+        self._body_container.setVisible(not self._collapsed)
+        if self._title_btn is not None:
+            escaped = self._base_title.replace("&", "&&")
+            arrow = "▸" if self._collapsed else "▾"
+            self._title_btn.setText(f"{arrow}  {escaped}")
+
+
+class SegmentedPills(QWidget):
+    """Row or grid of pill buttons acting as a sleek mutually-exclusive selector."""
+
+    changed = Signal(str)
+
+    def __init__(
+        self,
+        options: Iterable[tuple[str, str]],
+        selected_id: str | None = None,
+        max_cols: int | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._max_cols = max_cols
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(4)
+
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+        self._buttons: dict[str, QPushButton] = {}
+        self._id_order: list[str] = []
+
+        self.set_options(options, selected_id)
+
+    def set_options(
+        self,
+        options: Iterable[tuple[str, str]],
+        selected_id: str | None = None,
+    ) -> None:
+        for btn in self._buttons.values():
+            self._group.removeButton(btn)
+            self._layout.removeWidget(btn)
+            btn.deleteLater()
+        self._buttons.clear()
+        self._id_order.clear()
+
+        opts_list = list(options)
+        cols = self._max_cols or max(1, len(opts_list))
+
+        for idx, (opt_id, label) in enumerate(opts_list):
+            btn = QPushButton(label)
+            btn.setObjectName("PillBtn")
+            btn.setCheckable(True)
+            btn.setMinimumWidth(0)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            btn.clicked.connect(lambda _checked, oid=opt_id: self.changed.emit(oid))
+            self._group.addButton(btn)
+            self._layout.addWidget(btn, idx // cols, idx % cols)
+            self._buttons[opt_id] = btn
+            self._id_order.append(opt_id)
+
+        if selected_id and selected_id in self._buttons:
+            self._buttons[selected_id].setChecked(True)
+        elif self._id_order:
+            self._buttons[self._id_order[0]].setChecked(True)
+
+    def set_selected(self, option_id: str) -> None:
+        btn = self._buttons.get(option_id)
+        if btn is not None:
+            btn.blockSignals(True)
+            btn.setChecked(True)
+            btn.blockSignals(False)
+
+    def current_id(self) -> str:
+        for oid in self._id_order:
+            if self._buttons[oid].isChecked():
+                return oid
+        return self._id_order[0] if self._id_order else ""
+
+    def update_label(self, option_id: str, new_label: str) -> None:
+        btn = self._buttons.get(option_id)
+        if btn is not None:
+            btn.setText(new_label)
+
+    def set_option_enabled(self, option_id: str, enabled: bool, tooltip: str = "") -> None:
+        btn = self._buttons.get(option_id)
+        if btn is not None:
+            btn.setEnabled(enabled)
+            btn.setToolTip(tooltip)
+
+
+class SettingRow(QFrame):
+    """Single categorized GTA VI graphics control with load badges and pills."""
+
+    value_changed = Signal(str, str)
+
+    def __init__(
+        self,
+        definition: SettingDefinition,
+        selected_option: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("SettingRow")
+        self.definition = definition
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(6)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(6)
+
+        self._name_label = QLabel(definition.name)
+        self._name_label.setWordWrap(True)
+        self._name_label.setMinimumWidth(0)
+        self._name_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._name_label.setStyleSheet("font-weight: 600; font-size: 11.5px; color: #F1F5F9;")
+        top_row.addWidget(self._name_label, 1)
+
+        for badge in definition.badges:
+            fg, bg = BADGE_COLORS.get(badge, ("#E2E8F0", "rgba(255,255,255,0.1)"))
+            pill = QLabel(badge)
+            pill.setStyleSheet(
+                f"color: {fg}; background-color: {bg}; border: 1px solid {fg}; "
+                "border-radius: 5px; padding: 1px 5px; font-size: 9.5px; font-weight: 700;"
+            )
+            top_row.addWidget(pill)
+
+        layout.addLayout(top_row)
+
+        options = [(opt.label, opt.label) for opt in definition.options]
+        self.pills = SegmentedPills(options, selected_id=selected_option)
+        self.pills.changed.connect(lambda val: self.value_changed.emit(self.definition.id, val))
+        layout.addWidget(self.pills)
+
+        self.set_language("en")
+
+    def set_value(self, value: str) -> None:
+        self.pills.set_selected(value)
+
+    def set_language(self, lang: str) -> None:
+        detail = self.definition.tooltip_fa if lang == "fa" else self.definition.tooltip_en
+        tip = (
+            f"<b>{self.definition.name}</b><br/>"
+            f"{detail}<br/>"
+            f"<span style='color:#94A3B8'>Tex2 Parameters: {self.definition.tex2_subsettings}</span>"
+        )
+        self.setToolTip(tip)
+
+
+class HeroTelemetryCard(GlassCard):
+    """Big glass hero display for Avg FPS, 1% Low FPS, Frame Gen FPS, and active bottleneck."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("", collapsible=False, parent=parent)
+
+        header = QHBoxLayout()
+        header.setSpacing(6)
+        title = QLabel("LIVE TELEMETRY")
+        title.setObjectName("SectionTitle")
+        title.setMinimumWidth(0)
+        header.addWidget(title)
+        header.addStretch(1)
+
+        self.bottleneck_badge = QLabel("BALANCED")
+        self.bottleneck_badge.setStyleSheet(
+            f"color: {CYAN}; background-color: rgba(0, 240, 255, 0.14); "
+            f"border: 1px solid {CYAN}; border-radius: 7px; padding: 3px 8px; "
+            "font-size: 10px; font-weight: 800;"
+        )
+        header.addWidget(self.bottleneck_badge)
+        self.body_layout.addLayout(header)
+
+        tiles_row = QHBoxLayout()
+        tiles_row.setSpacing(6)
+
+        self._avg_value, self._avg_sub = self._create_kpi_tile(
+            tiles_row, "AVG FPS", "--", "Base Render"
+        )
+        self._low_value, self._low_sub = self._create_kpi_tile(
+            tiles_row, "1% LOW", "--", "City Floor"
+        )
+        self._fg_value, self._fg_sub = self._create_kpi_tile(
+            tiles_row, "FRAME GEN", "--", "Off"
+        )
+        self.body_layout.addLayout(tiles_row)
+
+    def _create_kpi_tile(
+        self,
+        parent_layout: QHBoxLayout,
+        caption: str,
+        initial_val: str,
+        initial_sub: str,
+    ) -> tuple[QLabel, QLabel]:
+        tile = QFrame()
+        tile.setObjectName("HeroTile")
+        tile.setMinimumWidth(0)
+        tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        v = QVBoxLayout(tile)
+        v.setContentsMargins(6, 8, 6, 8)
+        v.setSpacing(2)
+
+        cap_lbl = QLabel(caption)
+        cap_lbl.setMinimumWidth(0)
+        cap_lbl.setStyleSheet("font-size: 9px; font-weight: 700; color: #94A3B8; letter-spacing: 0.5px;")
+        cap_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        v.addWidget(cap_lbl)
+
+        val_lbl = QLabel(initial_val)
+        val_lbl.setMinimumWidth(0)
+        val_lbl.setStyleSheet("font-size: 24px; font-weight: 800; color: #00F0FF;")
+        val_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        v.addWidget(val_lbl)
+
+        sub_lbl = QLabel(initial_sub)
+        sub_lbl.setMinimumWidth(0)
+        sub_lbl.setStyleSheet("font-size: 9.5px; color: #94A3B8;")
+        sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        v.addWidget(sub_lbl)
+
+        parent_layout.addWidget(tile, 1)
+        return val_lbl, sub_lbl
+
+    def update_telemetry(self, result: SimulationResult) -> None:
+        avg_color = fps_accent_color(result.base_fps)
+        low_color = fps_accent_color(result.low_1pct_fps)
+        fg_color = fps_accent_color(result.fg_fps) if result.effective_fg_id != "off" else TEXT_MUTED
+
+        self._avg_value.setText(f"{result.base_fps:.0f}")
+        self._avg_value.setStyleSheet(f"font-size: 24px; font-weight: 800; color: {avg_color};")
+        self._avg_sub.setText(f"G {result.raw_gpu_fps:.0f} | C {result.raw_cpu_fps:.0f}")
+
+        self._low_value.setText(f"{result.low_1pct_fps:.0f}")
+        self._low_value.setStyleSheet(f"font-size: 24px; font-weight: 800; color: {low_color};")
+        self._low_sub.setText("City / Chaos")
+
+        if result.effective_fg_id == "off":
+            self._fg_value.setText("OFF")
+            self._fg_value.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {fg_color};")
+            self._fg_sub.setText("Native")
+        else:
+            self._fg_value.setText(f"{result.fg_fps:.0f}")
+            self._fg_value.setStyleSheet(f"font-size: 24px; font-weight: 800; color: {fg_color};")
+            mode_txt = "2x FG" if result.effective_fg_id == "2x" else f"MFG {result.effective_fg_id.upper()}"
+            if result.base_fps < 38.0:
+                self._fg_sub.setText(f"{mode_txt} • Low!")
+                self._fg_sub.setStyleSheet(f"font-size: 9.5px; color: {AMBER}; font-weight: 700;")
+            else:
+                self._fg_sub.setText(mode_txt)
+                self._fg_sub.setStyleSheet("font-size: 9.5px; color: #94A3B8;")
+
+        bn_color_map = {
+            "Balanced": EMERALD,
+            "GPU / RT": VIOLET,
+            "CPU": CYAN,
+            "VRAM Overflow": CRIMSON,
+            "RAM / Unified Overflow": CRIMSON,
+        }
+        bn_color = bn_color_map.get(result.primary_bottleneck, CYAN)
+        self.bottleneck_badge.setText(result.primary_bottleneck.upper())
+        self.bottleneck_badge.setStyleSheet(
+            f"color: {bn_color}; background-color: rgba(15, 23, 42, 0.72); "
+            f"border: 1px solid {bn_color}; border-radius: 7px; padding: 3px 9px; "
+            "font-size: 10.5px; font-weight: 800;"
+        )
+
+
+class NeonMeterBar(QWidget):
+    """Custom QPainter load/memory meter with 88% amber threshold and pulsing >100% overflow."""
+
+    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._title = title
+        self._right_text = "0%"
+        self._ratio = 0.0
+        self._base_color = QColor(CYAN)
+        self._is_overflow = False
+        self._pulse_phase = 0.0
+        self._pulse_dir = 1
+
+        self.setMinimumHeight(38)
+        self.setMaximumHeight(42)
+
+        self._pulse_timer = QTimer(self)
+        self._pulse_timer.setInterval(45)
+        self._pulse_timer.timeout.connect(self._tick_pulse)
+
+    def _tick_pulse(self) -> None:
+        self._pulse_phase += 0.09 * self._pulse_dir
+        if self._pulse_phase >= 1.0:
+            self._pulse_phase = 1.0
+            self._pulse_dir = -1
+        elif self._pulse_phase <= 0.0:
+            self._pulse_phase = 0.0
+            self._pulse_dir = 1
+        self.update()
+
+    def set_percentage(self, title: str, pct: float, accent_hex: str) -> None:
+        self._title = title
+        self._ratio = max(0.0, pct / 100.0)
+        self._right_text = f"{pct:.0f}%"
+        self._is_overflow = pct > 100.0
+        if pct >= 95.0:
+            self._base_color = QColor(MAGENTA)
+        elif pct >= 85.0:
+            self._base_color = QColor(AMBER)
+        else:
+            self._base_color = QColor(accent_hex)
+        self._sync_pulse_timer()
+        self.update()
+
+    def set_memory(
+        self,
+        title: str,
+        used_gb: float,
+        total_gb: float,
+        overflow_gb: float,
+    ) -> None:
+        self._title = title
+        ratio = used_gb / max(0.1, total_gb)
+        self._ratio = ratio
+        self._is_overflow = overflow_gb > 0.0
+        if self._is_overflow:
+            self._right_text = f"{used_gb:.1f} / {total_gb:.0f} GB (+{overflow_gb:.1f} SPILL!)"
+            self._base_color = QColor(CRIMSON)
+        elif ratio >= 0.88:
+            self._right_text = f"{used_gb:.1f} / {total_gb:.0f} GB ({ratio * 100:.0f}%)"
+            self._base_color = QColor(AMBER)
+        else:
+            self._right_text = f"{used_gb:.1f} / {total_gb:.0f} GB ({ratio * 100:.0f}%)"
+            self._base_color = QColor(EMERALD if ratio < 0.72 else CYAN)
+        self._sync_pulse_timer()
+        self.update()
+
+    def _sync_pulse_timer(self) -> None:
+        if self._is_overflow:
+            if not self._pulse_timer.isActive():
+                self._pulse_timer.start()
+        else:
+            if self._pulse_timer.isActive():
+                self._pulse_timer.stop()
+            self._pulse_phase = 0.0
+
+    def paintEvent(self, _event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w = float(self.width())
+        label_font = QFont("Segoe UI", 9)
+        label_font.setBold(True)
+        painter.setFont(label_font)
+
+        painter.setPen(QColor(TEXT_PRIMARY))
+        painter.drawText(QRectF(0, 0, w * 0.55, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self._title)
+
+        right_color = QColor(CRIMSON if self._is_overflow else TEXT_SECONDARY)
+        painter.setPen(right_color)
+        painter.drawText(QRectF(w * 0.35, 0, w * 0.65, 18), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, self._right_text)
+
+        bar_rect = QRectF(0, 21, w, 12)
+        track_color = QColor(255, 255, 255, 20)
+        painter.setPen(QPen(QColor(255, 255, 255, 34), 1.0))
+        painter.setBrush(track_color)
+        painter.drawRoundedRect(bar_rect, 6, 6)
+
+        clamped = min(1.0, max(0.02, self._ratio))
+        fill_w = max(8.0, (w - 2.0) * clamped)
+        fill_rect = QRectF(1, 22, fill_w, 10)
+
+        if self._is_overflow:
+            alpha = int(175 + 80 * self._pulse_phase)
+            c1 = QColor(255, 46, 147, alpha)
+            c2 = QColor(255, 77, 109, alpha)
+            glow_pen = QPen(QColor(255, 77, 109, int(120 + 130 * self._pulse_phase)), 1.5)
+            painter.setPen(glow_pen)
+            painter.drawRoundedRect(bar_rect, 6, 6)
+        else:
+            c1 = QColor(self._base_color)
+            c2 = QColor(self._base_color).lighter(125)
+            c1.setAlpha(210)
+            c2.setAlpha(245)
+
+        grad = QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+        grad.setColorAt(0.0, c1)
+        grad.setColorAt(1.0, c2)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(grad)
+        painter.drawRoundedRect(fill_rect, 5, 5)
+
+        # Subtle 88% marker line
+        marker_x = w * 0.88
+        painter.setPen(QPen(QColor(255, 255, 255, 70), 1.0, Qt.PenStyle.DotLine))
+        painter.drawLine(QPointF(marker_x, 21), QPointF(marker_x, 33))
+
+
+class BottleneckDiagnosisBox(GlassCard):
+    """Plain-English (or Persian) bottleneck diagnosis, actionable tip, and warnings."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("BOTTLENECK RADAR & DIAGNOSIS", collapsible=False, parent=parent)
+        self._lang = "en"
+        self._last_result: SimulationResult | None = None
+
+        self._diag_label = QLabel()
+        self._diag_label.setWordWrap(True)
+        self._diag_label.setStyleSheet("font-size: 11.5px; color: #F1F5F9; line-height: 1.35;")
+        self.body_layout.addWidget(self._diag_label)
+
+        self._rec_label = QLabel()
+        self._rec_label.setWordWrap(True)
+        self._rec_label.setStyleSheet(
+            "font-size: 11px; color: #00F0FF; background-color: rgba(0, 240, 255, 0.08); "
+            "border: 1px solid rgba(0, 240, 255, 0.28); border-radius: 8px; padding: 6px 8px;"
+        )
+        self.body_layout.addWidget(self._rec_label)
+
+        self._warnings_container = QVBoxLayout()
+        self._warnings_container.setSpacing(5)
+        self.body_layout.addLayout(self._warnings_container)
+
+    def set_language(self, lang: str) -> None:
+        self._lang = lang
+        if self._last_result is not None:
+            self.update_diagnosis(self._last_result)
+
+    def update_diagnosis(self, result: SimulationResult) -> None:
+        self._last_result = result
+        is_fa = self._lang == "fa"
+
+        diag = result.diagnosis_fa if is_fa else result.diagnosis_en
+        rec = result.recommendation_fa if is_fa else result.recommendation_en
+        align = Qt.AlignmentFlag.AlignRight if is_fa else Qt.AlignmentFlag.AlignLeft
+
+        self._diag_label.setAlignment(align)
+        self._rec_label.setAlignment(align)
+        self._diag_label.setText(diag)
+        self._rec_label.setText(f"{'پیشنهاد بهینه‌سازی:' if is_fa else 'Fix:'} {rec}")
+
+        while self._warnings_container.count():
+            item = self._warnings_container.takeAt(0)
+            if item and (old_w := item.widget()):
+                old_w.hide()
+                old_w.setParent(None)
+                old_w.deleteLater()
+
+        for warn in result.warnings:
+            self._warnings_container.addWidget(self._make_warning_chip(warn, is_fa))
+        self.updateGeometry()
+
+    def _make_warning_chip(self, warn: WarningMessage, is_fa: bool) -> QFrame:
+        chip = QFrame()
+        if warn.severity == "critical":
+            border_c, bg_c, title_c = CRIMSON, "rgba(255, 77, 109, 0.14)", "#FF8FA3"
+        elif warn.severity == "warning":
+            border_c, bg_c, title_c = AMBER, "rgba(255, 184, 0, 0.12)", "#FFD166"
+        else:
+            border_c, bg_c, title_c = CYAN, "rgba(0, 240, 255, 0.08)", "#67E8F9"
+
+        chip.setStyleSheet(
+            f"QFrame {{ background-color: {bg_c}; border: 1px solid {border_c}; border-radius: 8px; }}"
+        )
+        v = QVBoxLayout(chip)
+        v.setContentsMargins(8, 5, 8, 5)
+        v.setSpacing(2)
+
+        title = QLabel(warn.title_fa if is_fa else warn.title_en)
+        title.setWordWrap(True)
+        title.setAlignment(Qt.AlignmentFlag.AlignRight if is_fa else Qt.AlignmentFlag.AlignLeft)
+        title.setStyleSheet(f"font-size: 10.5px; font-weight: 800; color: {title_c}; border: none; background: transparent;")
+        v.addWidget(title)
+
+        detail = QLabel(warn.detail_fa if is_fa else warn.detail_en)
+        detail.setWordWrap(True)
+        detail.setAlignment(Qt.AlignmentFlag.AlignRight if is_fa else Qt.AlignmentFlag.AlignLeft)
+        detail.setStyleSheet("font-size: 10px; color: #CBD5E1; border: none; background: transparent;")
+        v.addWidget(detail)
+        return chip
+
+
+class MultiGPUComparisonChart(QWidget):
+    """Live QPainter horizontal bar chart comparing all GPUs + PS5 / PS5 Pro console baselines."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._entries: list[GPUComparisonEntry] = []
+        self._bar_rects: list[tuple[QRectF, GPUComparisonEntry]] = []
+        self.setMouseTracking(True)
+        self.setMinimumHeight(330)
+
+    def set_entries(self, entries: list[GPUComparisonEntry]) -> None:
+        self._entries = entries
+        needed_h = max(310, 34 + len(entries) * 26)
+        self.setMinimumHeight(needed_h)
+        self.update()
+
+    def mouseMoveEvent(self, event) -> None:
+        pos = event.position()
+        for rect, entry in self._bar_rects:
+            if rect.contains(pos):
+                spill = " | VRAM OVERFLOW!" if entry.has_vram_overflow else ""
+                QToolTip.showText(
+                    event.globalPosition().toPoint(),
+                    f"<b>{entry.label}</b><br/>"
+                    f"Base Avg: {entry.base_fps:.1f} FPS | 1% Low: {entry.low_1pct_fps:.1f} FPS{spill}<br/>"
+                    f"<span style='color:#94A3B8'>{entry.notes}</span>",
+                    self,
+                )
+                return
+        QToolTip.hideText()
+        super().mouseMoveEvent(event)
+
+    def paintEvent(self, _event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        self._bar_rects.clear()
+        if not self._entries:
+            return
+
+        w = float(self.width())
+        label_col_w = min(102.0, max(76.0, w * 0.29))
+        right_pad = 38.0
+        chart_left = label_col_w
+        chart_w = max(80.0, w - chart_left - right_pad)
+        top_offset = 24.0
+        row_h = 25.0
+
+        max_fps = max([75.0] + [e.base_fps for e in self._entries]) * 1.08
+
+        # Header reference lines (30 FPS PS5 Target & 60 FPS Smooth Target)
+        ref_font = QFont("Segoe UI", 8)
+        ref_font.setBold(True)
+        painter.setFont(ref_font)
+
+        chart_bottom = top_offset + len(self._entries) * row_h
+        for target_fps, label, color_hex in (
+            (30.0, "30 FPS", AMBER),
+            (60.0, "60 FPS", EMERALD),
+        ):
+            if target_fps <= max_fps:
+                rx = chart_left + (target_fps / max_fps) * chart_w
+                c = QColor(color_hex)
+                c.setAlpha(155)
+                pen = QPen(c, 1.2, Qt.PenStyle.DashLine)
+                painter.setPen(pen)
+                painter.drawLine(QPointF(rx, top_offset - 4), QPointF(rx, chart_bottom))
+
+                painter.setPen(QColor(color_hex))
+                lbl_x = max(chart_left - 10.0, min(w - 52.0, rx - 26.0))
+                painter.drawText(
+                    QRectF(lbl_x, 0, 52, 18),
+                    Qt.AlignmentFlag.AlignCenter,
+                    label,
+                )
+
+        name_font = QFont("Segoe UI", 8)
+        val_font = QFont("Segoe UI", 8)
+        val_font.setBold(True)
+
+        for idx, entry in enumerate(self._entries):
+            y = top_offset + idx * row_h
+            row_rect = QRectF(0, y, w, row_h - 2)
+            self._bar_rects.append((row_rect, entry))
+
+            if entry.is_selected:
+                painter.setPen(QPen(QColor(0, 240, 255, 130), 1.0))
+                painter.setBrush(QColor(0, 240, 255, 24))
+                painter.drawRoundedRect(row_rect, 5, 5)
+
+            # GPU name
+            f = QFont(name_font)
+            f.setBold(entry.is_selected or entry.is_reference_console)
+            painter.setFont(f)
+            if entry.is_selected:
+                painter.setPen(QColor(CYAN))
+            elif entry.is_reference_console:
+                painter.setPen(QColor(VIOLET))
+            else:
+                painter.setPen(QColor(TEXT_PRIMARY))
+
+            painter.drawText(
+                QRectF(4, y, label_col_w - 8, row_h - 2),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                entry.label,
+            )
+
+            # Bar track
+            bar_y = y + 5
+            bar_h = row_h - 12
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 14))
+            painter.drawRoundedRect(QRectF(chart_left, bar_y, chart_w, bar_h), 4, 4)
+
+            # Bar fill
+            bar_w = max(4.0, min(chart_w, (entry.base_fps / max_fps) * chart_w))
+            fill_rect = QRectF(chart_left, bar_y, bar_w, bar_h)
+
+            if entry.is_reference_console:
+                grad = QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+                grad.setColorAt(0.0, QColor(124, 58, 237, 155))
+                grad.setColorAt(1.0, QColor(167, 139, 250, 210))
+            elif entry.is_selected:
+                grad = QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+                grad.setColorAt(0.0, QColor(CYAN))
+                grad.setColorAt(1.0, QColor(MAGENTA))
+            elif entry.has_vram_overflow:
+                grad = QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+                grad.setColorAt(0.0, QColor(255, 77, 109, 175))
+                grad.setColorAt(1.0, QColor(255, 184, 0, 200))
+            else:
+                accent = QColor(fps_accent_color(entry.base_fps))
+                accent.setAlpha(185)
+                grad = QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+                grad.setColorAt(0.0, accent.darker(125))
+                grad.setColorAt(1.0, accent)
+
+            painter.setBrush(grad)
+            painter.drawRoundedRect(fill_rect, 4, 4)
+
+            # Value label
+            painter.setFont(val_font)
+            val_color = QColor(CRIMSON if entry.has_vram_overflow else TEXT_PRIMARY)
+            painter.setPen(val_color)
+            suffix = " !" if entry.has_vram_overflow else ""
+            painter.drawText(
+                QRectF(chart_left + bar_w + 5, y, right_pad - 6, row_h - 2),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                f"{entry.base_fps:.0f}{suffix}",
+            )
+
+
+================================================================================
+FILE: update_all_files.py
+================================================================================
+#!/usr/bin/env python3
+import sys
+import threading
+from pathlib import Path
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
+
+# پسوندهای پیش‌فرض برای نادیده گرفتن
+DEFAULT_SKIP_EXTS = {
+    ".ico", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
+    ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".pdf", ".zip", ".exe",
+    ".db", ".sqlite", ".sqlite3", ".env", ".pem", ".key", ".pyc"
+}
+
+# پوشه‌های معروفی که معمولاً نباید اسکن شوند
+DEFAULT_SKIP_DIRS = {
+    ".next", ".git", "node_modules", "__pycache__", ".idea", ".vscode", "venv", ".venv"
+}
+
+# فایل‌های تکی که نادیده گرفته می‌شوند
+DEFAULT_SKIP_FILES = {
+    ".env", ".env.local", ".env.development", ".env.production",
+    "package-lock.json", "all_files.txt", "dev.db", "dev.db-journal"
+}
+
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("ابزار اسکن و ادغام پوشه‌ها در یک فایل متنی")
+        self.geometry("700x770")
+        self.minsize(600, 670)
+
+        self.root_path = Path.cwd()
+        self.dir_check_vars = {}  # برای ذخیره وضعیت تیک چک‌باکس‌ها
+        self.include_root_files_var = tk.BooleanVar(value=True)
+        self.paths_only_var = tk.BooleanVar(value=False)  # گزینه جدید: فقط مسیر فایل‌ها
+
+        self._build_ui()
+
+    def _build_ui(self):
+        # 1. فریم انتخاب مسیر مبدا
+        frame_input = ttk.LabelFrame(self, text=" ۱. انتخاب پوشه پروژه (Root Directory) ", padding=10)
+        frame_input.pack(fill="x", padx=10, pady=5)
+
+        self.entry_root = ttk.Entry(frame_input)
+        self.entry_root.insert(0, str(self.root_path))
+        self.entry_root.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        btn_browse_root = ttk.Button(frame_input, text="انتخاب مسیر...", command=self.browse_root_dir)
+        btn_browse_root.pack(side="right")
+
+        # 2. فریم انتخاب پوشه‌ها
+        frame_dirs = ttk.LabelFrame(self, text=" ۲. انتخاب پوشه‌های مورد نظر برای استخراج ", padding=10)
+        frame_dirs.pack(fill="both", expand=True, padx=10, pady=5)
+
+        # دکمه‌های کنترلی سریع
+        btn_box = ttk.Frame(frame_dirs)
+        btn_box.pack(fill="x", pady=(0, 5))
+
+        ttk.Button(btn_box, text="انتخاب همه", command=self.select_all_dirs).pack(side="left", padx=2)
+        ttk.Button(btn_box, text="لغو همه", command=self.deselect_all_dirs).pack(side="left", padx=2)
+        ttk.Checkbutton(btn_box, text="شامل فایل‌های موجود در ریشه (Root Files)", variable=self.include_root_files_var).pack(side="right", padx=5)
+
+        # ساخت اسکرول‌بار برای لیست پوشه‌ها
+        canvas_frame = ttk.Frame(frame_dirs)
+        canvas_frame.pack(fill="both", expand=True)
+
+        self.canvas = tk.Canvas(canvas_frame, borderwidth=0, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # 3. فریم فایل خروجی و تنظیمات آن
+        frame_output = ttk.LabelFrame(self, text=" ۳. فایل خروجی و حالت استخراج ", padding=10)
+        frame_output.pack(fill="x", padx=10, pady=5)
+
+        out_path_frame = ttk.Frame(frame_output)
+        out_path_frame.pack(fill="x")
+
+        self.entry_output = ttk.Entry(out_path_frame)
+        self.entry_output.insert(0, str(self.root_path / "all_files.txt"))
+        self.entry_output.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        btn_browse_out = ttk.Button(out_path_frame, text="تغییر مقصد...", command=self.browse_output_file)
+        btn_browse_out.pack(side="right")
+
+        # چک‌باکس جدید برای خروجی فقط مسیر فایل‌ها
+        ttk.Checkbutton(
+            frame_output,
+            text="فقط استخراج مسیر کامل فایل‌ها (بدون محتوای فایل‌ها)",
+            variable=self.paths_only_var
+        ).pack(anchor="w", pady=(8, 0))
+
+        # 4. دکمه اجرا
+        self.btn_run = tk.Button(
+            self, text="شروع اسکن و ایجاد فایل", font=("Segoe UI", 11, "bold"),
+            bg="#007acc", fg="white", activebackground="#005999", activeforeground="white",
+            relief="flat", pady=8, command=self.start_processing
+        )
+        self.btn_run.pack(fill="x", padx=10, pady=8)
+
+        # 5. گزارش و کنسول وضعیت
+        frame_logs = ttk.LabelFrame(self, text=" گزارش وضعیت و آمار ", padding=5)
+        frame_logs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        self.txt_log = scrolledtext.ScrolledText(frame_logs, height=8, font=("Consolas", 9))
+        self.txt_log.pack(fill="both", expand=True)
+
+        # پر کردن اولیه لیست پوشه‌ها
+        self.refresh_directories_list()
+
+    def browse_root_dir(self):
+        selected = filedialog.askdirectory(initialdir=self.root_path, title="انتخاب پوشه پروژه")
+        if selected:
+            self.root_path = Path(selected)
+            self.entry_root.delete(0, tk.END)
+            self.entry_root.insert(0, str(self.root_path))
+            self.entry_output.delete(0, tk.END)
+            self.entry_output.insert(0, str(self.root_path / "all_files.txt"))
+            self.refresh_directories_list()
+
+    def browse_output_file(self):
+        selected = filedialog.asksaveasfilename(
+            initialdir=self.root_path,
+            initialfile="all_files.txt",
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        if selected:
+            self.entry_output.delete(0, tk.END)
+            self.entry_output.insert(0, selected)
+
+    def refresh_directories_list(self):
+        # پاک کردن المان‌های قبلی
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+        self.dir_check_vars.clear()
+
+        try:
+            subdirs = sorted([p for p in self.root_path.iterdir() if p.is_dir()])
+        except Exception as e:
+            self.log(f"خطا در خواندن پوشه: {e}")
+            return
+
+        if not subdirs:
+            lbl = ttk.Label(self.scrollable_frame, text="هیچ زیرپوشه‌ای در این مسیر پیدا نشد.", foreground="gray")
+            lbl.pack(anchor="w", padx=5, pady=5)
+            return
+
+        for directory in subdirs:
+            dirname = directory.name
+            # اگر پوشه سیستمی/بی‌اهمیت باشد پیش‌فرض غیرفعال است
+            is_default_checked = dirname not in DEFAULT_SKIP_DIRS
+            var = tk.BooleanVar(value=is_default_checked)
+            self.dir_check_vars[dirname] = var
+
+            chk = ttk.Checkbutton(
+                self.scrollable_frame,
+                text=dirname if is_default_checked else f"{dirname} (پیشنهاد حذف)",
+                variable=var
+            )
+            chk.pack(anchor="w", padx=5, pady=2)
+
+    def select_all_dirs(self):
+        for var in self.dir_check_vars.values():
+            var.set(True)
+
+    def deselect_all_dirs(self):
+        for var in self.dir_check_vars.values():
+            var.set(False)
+
+    def log(self, message):
+        self.txt_log.insert(tk.END, message + "\n")
+        self.txt_log.see(tk.END)
+
+    def start_processing(self):
+        # غیرفعال کردن دکمه حین پردازش
+        self.btn_run.config(state="disabled")
+        self.txt_log.delete(1.0, tk.END)
+        # اجرای پردازش در ترد جداگانه تا UI هنگ نکند
+        threading.Thread(target=self._process_files, daemon=True).start()
+
+    def _process_files(self):
+        try:
+            root = Path(self.entry_root.get()).resolve()
+            output_file = Path(self.entry_output.get()).resolve()
+
+            if not root.is_dir():
+                self.log("خطا: مسیر پوشه مبدا نامعتبر است!")
+                messagebox.showerror("خطا", "پوشه مبدا وجود ندارد.")
+                return
+
+            selected_dirs = {name for name, var in self.dir_check_vars.items() if var.get()}
+            include_root_files = self.include_root_files_var.get()
+            paths_only = self.paths_only_var.get()
+
+            self.log(f"شروع پردازش از: {root}")
+            self.log(f"پوشه‌های انتخاب‌شده: {', '.join(selected_dirs) if selected_dirs else 'هیچ‌کدام'}")
+            self.log(f"فایل‌های ریشه: {'بله' if include_root_files else 'خیر'}")
+            self.log(f"حالت استخراج: {'فقط مسیر فایل‌ها' if paths_only else 'مسیر + محتوای فایل‌ها'}")
+            self.log("-" * 50)
+
+            files_to_process = []
+
+            # 1. فایل‌های مستقیم ریشه
+            if include_root_files:
+                for item in root.iterdir():
+                    if item.is_file():
+                        if item.name in DEFAULT_SKIP_FILES:
+                            continue
+                        if item.suffix.lower() in DEFAULT_SKIP_EXTS:
+                            continue
+                        if item.resolve() == output_file:
+                            continue
+                        files_to_process.append(item)
+
+            # 2. اسکن زیرپوشه‌های انتخاب‌شده
+            for dirname in selected_dirs:
+                target_dir = root / dirname
+                if not target_dir.exists():
+                    continue
+
+                for file_path in target_dir.rglob("*"):
+                    relative_parts = file_path.relative_to(root).parts
+
+                    # صرف نظر از پوشه‌های غیرمجاز درون مسیر
+                    if any(part in DEFAULT_SKIP_DIRS for part in relative_parts):
+                        continue
+
+                    if file_path.is_file():
+                        if file_path.name in DEFAULT_SKIP_FILES:
+                            continue
+                        if file_path.suffix.lower() in DEFAULT_SKIP_EXTS:
+                            continue
+                        if file_path.resolve() == output_file:
+                            continue
+                        files_to_process.append(file_path)
+
+            # مرتب‌سازی مسیرها
+            files_to_process.sort(key=lambda f: f.relative_to(root).as_posix())
+
+            total_found = len(files_to_process)
+            self.log(f"تعداد کل فایل‌های تایید شده: {total_found}")
+
+            if total_found == 0:
+                self.log("هیچ فایلی مطابق معیارهای انتخابی پیدا نشد.")
+                messagebox.showwarning("هشدار", "هیچ فایلی برای کپی پیدا نشد!")
+                return
+
+            read_errors = 0
+
+            if paths_only:
+                # حالت فقط مسیر کامل فایل‌ها
+                lines = [str(filepath.resolve()) for filepath in files_to_process]
+            else:
+                # حالت معمول: هدر + محتوای فایل‌ها
+                lines = [
+                    "=" * 80,
+                    f"  Generated from: {root}",
+                    f"  Total Files Included: {total_found}",
+                    "=" * 80,
+                    "",
+                ]
+
+                for idx, filepath in enumerate(files_to_process, 1):
+                    rel_str = filepath.relative_to(root).as_posix()
+                    lines.append("=" * 80)
+                    lines.append(f"FILE: {rel_str}")
+                    lines.append("=" * 80)
+
+                    try:
+                        # تلاش برای خواندن با utf-8
+                        content = filepath.read_text(encoding="utf-8", errors="replace")
+                        lines.append(content)
+                    except Exception as e:
+                        read_errors += 1
+                        lines.append(f"[ERROR reading file: {e}]")
+
+                    lines.append("")
+
+            # نوشتن در فایل خروجی
+            final_content = "\n".join(lines)
+            output_file.write_text(final_content, encoding="utf-8")
+
+            file_size_kb = output_file.stat().st_size / 1024
+
+            self.log("-" * 50)
+            self.log(f"عملیات با موفقیت انجام شد!")
+            self.log(f"✔ فایل ذخیره شد در: {output_file}")
+            self.log(f"✔ تعداد کل فایل‌ها: {total_found}")
+            self.log(f"✔ حجم فایل خروجی: {file_size_kb:.1f} KB")
+            if read_errors > 0:
+                self.log(f"⚠ تعداد خطاهای خواندن: {read_errors}")
+
+            messagebox.showinfo(
+                "اتمام کار",
+                f"عملیات با موفقیت پایان یافت!\n\n"
+                f"تعداد فایل‌ها: {total_found}\n"
+                f"حجم خروجی: {file_size_kb:.1f} KB\n"
+                f"مسیر: {output_file.name}"
+            )
+
+        except Exception as e:
+            self.log(f"خطای سیستمی رخ داد: {e}")
+            messagebox.showerror("خطا", str(e))
+        finally:
+            self.btn_run.config(state="normal")
+
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()

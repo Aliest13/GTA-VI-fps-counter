@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from data.settings_db import SETTINGS_PRESET_BY_ID, default_settings_map
+from data.settings_db import SETTINGS, SETTINGS_PRESET_BY_ID, default_settings_map
 from engine.predictor import (
     SimulationInput,
     auto_optimize_for_60_fps,
@@ -218,3 +218,55 @@ def test_compare_all_gpus_includes_all_gpus_and_consoles() -> None:
     assert len(entries) == 11
     assert sum(1 for e in entries if e.is_selected) == 1
     assert sum(1 for e in entries if e.is_reference_console) == 2
+
+
+def test_laptop_720p_xess_balanced_floor_and_cpu_ceiling() -> None:
+    """720p XeSS Balanced clamps res factor >= 0.26 and 256V CPU caps ~40-44 FPS."""
+    laptop_input = SimulationInput(
+        gpu_id="arc_140v",
+        cpu_id="ultra_7_256v",
+        ram_gb=16,
+        ram_speed_id="lpddr5x_8533",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=True,
+        resolution_id="720p",
+        upscaler_id="balanced",
+        frame_gen_id="off",
+        settings=default_settings_map(),
+    )
+    base_res = simulate(laptop_input)
+    assert base_res.effective_res_factor == 0.26
+
+    perf_res = simulate(replace(laptop_input, upscaler_id="performance"))
+    assert perf_res.effective_res_factor == 0.26
+
+    opt = auto_optimize_for_60_fps(laptop_input, target_fps=60.0)
+    assert opt.reached_target is False
+    assert opt.resulting_base_fps <= 44.0
+
+    opt_res = simulate(replace(laptop_input, settings=opt.settings, upscaler_id=opt.upscaler_id))
+    assert 38.0 <= opt_res.raw_cpu_fps <= 44.5
+
+
+def test_13400f_minimum_cpu_settings_ceiling_stays_above_65_fps() -> None:
+    """Raising CPU cost floor to 0.70 still lets 13400F hit 65-75+ FPS when tuned."""
+    min_settings = {s.id: s.options[0].label for s in SETTINGS}
+    sim_input = SimulationInput(
+        gpu_id="arc_b580",
+        cpu_id="i5_13400f",
+        ram_gb=32,
+        ram_speed_id="ddr5_4800",
+        rebar_enabled=True,
+        gpu_oc_percent=0,
+        storage_type="NVMe Gen4",
+        is_laptop_mode=False,
+        resolution_id="1440p",
+        upscaler_id="quality",
+        frame_gen_id="off",
+        settings=min_settings,
+    )
+    res = simulate(sim_input)
+    assert 65.0 <= res.raw_cpu_fps <= 85.0
+    assert res.base_fps >= 65.0

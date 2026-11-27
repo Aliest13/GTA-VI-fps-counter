@@ -539,6 +539,9 @@ class BottleneckDiagnosisBox(GlassCard):
     def update_diagnosis(self, result: SimulationResult) -> None:
         self._last_result = result
         is_fa = self._lang == "fa"
+        self.setLayoutDirection(
+            Qt.LayoutDirection.RightToLeft if is_fa else Qt.LayoutDirection.LeftToRight
+        )
 
         diag = result.diagnosis_fa if is_fa else result.diagnosis_en
         rec = result.recommendation_fa if is_fa else result.recommendation_en

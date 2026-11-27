@@ -156,8 +156,8 @@ class MainWindow(QMainWindow):
 
         apply_windows_backdrop(self)
 
-        # Initialize default Desktop preset + 1440p Quality + PS5 Settings
-        self._apply_hardware_preset("my_desktop", recalculate=False)
+        # Initialize default Mainstream Desktop preset + 1440p Quality + PS5 Settings
+        self._apply_hardware_preset("mid_range_desktop", recalculate=False)
         self._res_pills.set_selected("1440p")
         self._upscaler_pills.set_selected("quality")
         self._fg_pills.set_selected("off")
@@ -731,13 +731,13 @@ class MainWindow(QMainWindow):
 
         if result.is_unified_pool:
             self._vram_bar.set_memory(
-                "Unified Memory Pool (Shared OS+CPU+GPU)",
+                "Unified Pool (OS+CPU+GPU)",
                 result.unified_pool_used_gb,
                 result.unified_pool_total_gb,
                 result.vram_overflow_gb,
             )
             self._ram_bar.set_memory(
-                "Estimated VRAM Share (Included in Pool)",
+                "VRAM Share (In Pool)",
                 result.vram_used_gb,
                 result.unified_pool_total_gb,
                 0.0,

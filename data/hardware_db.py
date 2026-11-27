@@ -225,7 +225,7 @@ GPUS: tuple[GPUProfile, ...] = (
     ),
     GPUProfile(
         id="arc_140v",
-        name="Laptop: Arc 140V (Vivobook 14 Flip)",
+        name="Laptop: Arc 140V (Lunar Lake iGPU)",
         short_name="Arc 140V (LP)",
         vendor="Intel",
         vram_gb=16.0,
@@ -413,20 +413,20 @@ STORAGE_OPTIONS: tuple[StorageType, ...] = ("NVMe Gen4", "SATA / HDD")
 
 HARDWARE_PRESETS: tuple[HardwarePreset, ...] = (
     HardwarePreset(
-        id="my_desktop",
-        label="My Desktop (13400F + B580 + 4800)",
-        gpu_id="arc_b580",
-        cpu_id="i5_13400f",
+        id="mid_range_desktop",
+        label="Mainstream (7600X + 9060 XT 16G)",
+        gpu_id="rx_9060_xt_16",
+        cpu_id="ryzen_7600x",
         ram_gb=32,
-        ram_speed_id="ddr5_4800",
+        ram_speed_id="ddr5_5600",
         rebar_enabled=True,
         gpu_oc_percent=0,
         storage_type="NVMe Gen4",
         is_laptop_mode=False,
     ),
     HardwarePreset(
-        id="my_laptop",
-        label="My Laptop (TP3407SA 256V)",
+        id="ultrabook_igpu",
+        label="Ultrabook (Ultra 7 256V + Arc 140V)",
         gpu_id="arc_140v",
         cpu_id="ultra_7_256v",
         ram_gb=16,
